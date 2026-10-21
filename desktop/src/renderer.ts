@@ -1,5 +1,6 @@
 import { Artwork, type SpriteFrame } from './artwork.js';
-import { OrbitTracker, PetBehavior, ShuffleBag, type Mood } from './shared/behavior.js';
+import { OrbitTracker, PetBehavior, type Mood } from './shared/behavior.js';
+import { GreetingVoicePlayer } from './shared/voice.js';
 import type { PointerSample, Settings } from './bridge.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#pet')!;
@@ -8,7 +9,7 @@ const artwork = new Artwork();
 const behavior = new PetBehavior();
 const orbit = new OrbitTracker();
 const voices: HTMLAudioElement[] = [];
-const bag = new ShuffleBag(3);
+let voicePlayer: GreetingVoicePlayer;
 let settings: Settings = { muted: false, scale: 1.5 };
 let pointer: PointerSample | undefined;
 let pointerMovedAt = 0;
@@ -29,18 +30,13 @@ const descriptions: Record<Mood, string> = {
   pout: '正在消气', dance: '正在跳舞', sleeping: '正在睡觉', curious: '好奇地看看'
 };
 
-function stopVoice(): void { voices.forEach(audio => { audio.pause(); audio.currentTime = 0; }); }
-function playVoice(index: number): void {
-  if (settings.muted) return;
-  stopVoice();
-  voices[index].play().catch(() => window.hiho.fatal());
-}
+function stopVoice(): void { voicePlayer.stop(); }
 
 function greet(): void {
   const time = performance.now() / 1000;
-  const index = bag.next();
+  if (behavior.dragging || ['dizzy', 'waking'].includes(behavior.mood)) return;
+  const index = voicePlayer.request();
   if (behavior.tap(index, time, Math.min(2.4, Math.max(1.1, voices[index].duration + 0.2)))) {
-    playVoice(index);
     nextCuriosity = time + 18;
   }
 }
@@ -64,15 +60,17 @@ canvas.addEventListener('pointerdown', event => {
   window.hiho.prepareDrag();
 });
 canvas.addEventListener('pointermove', event => {
-  if (!down || event.pointerId !== down.pointerId || behavior.dragging) return;
-  if (Math.hypot(event.screenX - down.x, event.screenY - down.y) > 5) {
-    behavior.beginDrag(performance.now() / 1000);
+  if (!down || event.pointerId !== down.pointerId) return;
+  const time = performance.now() / 1000;
+  if (!behavior.dragging && Math.hypot(event.screenX - down.x, event.screenY - down.y) > 5) {
+    behavior.beginDrag(time, down.x, down.y);
     orbit.reset();
     angle = angleVelocity = 0;
     stopVoice();
     canvas.classList.add('held');
     window.hiho.startDrag();
   }
+  if (behavior.dragging) behavior.drag(event.screenX, event.screenY, time);
 });
 canvas.addEventListener('pointerup', event => {
   if (event.button === 0) finishDrag();
@@ -82,7 +80,7 @@ canvas.addEventListener('lostpointercapture', finishDrag);
 canvas.addEventListener('click', event => {
   if (performance.now() < suppressClickUntil) return;
   if (event.detail === 2) behavior.jump(performance.now() / 1000);
-  else if (event.detail <= 1) greet();
+  else greet();
 });
 canvas.addEventListener('contextmenu', event => { event.preventDefault(); window.hiho.contextMenu(); });
 canvas.addEventListener('keydown', event => {
@@ -94,7 +92,6 @@ window.hiho.onPointer(sample => {
   pointer = sample;
   const time = performance.now() / 1000;
   if (sample.moved) pointerMovedAt = time;
-  if (behavior.dragging) behavior.drag(sample.vx, sample.vy, time);
 });
 window.hiho.onAction(action => {
   const time = performance.now() / 1000;
@@ -102,7 +99,7 @@ window.hiho.onAction(action => {
   else if (action.type === 'sleep') { stopVoice(); orbit.reset(); behavior.toggleSleep(time); }
   else if (action.type === 'settings') {
     settings = action.settings;
-    if (settings.muted) stopVoice();
+    voicePlayer.setMuted(settings.muted);
   }
 });
 
@@ -129,16 +126,16 @@ function animate(milliseconds: number): void {
   const dt = previousTime ? Math.min(1 / 20, Math.max(1 / 240, time - previousTime)) : 1 / 60;
   previousTime = time;
   behavior.update(time);
-  if (behavior.mood === 'idle' && time > nextCuriosity) {
+  if (behavior.mood === 'idle' && time > nextCuriosity && time - pointerMovedAt > 2.3) {
     behavior.curious(time);
     nextCuriosity = time + 15 + Math.random() * 10;
   }
   let look: number | undefined;
   if (behavior.mood === 'idle' && pointer && time - pointerMovedAt < 2.3) {
-    const dx = pointer.localX - window.innerWidth / 2;
-    const dy = window.innerHeight - 24 - 112 * settings.scale - pointer.localY;
+    const dx = (pointer.localX - window.innerWidth / 2) / settings.scale;
+    const dy = (window.innerHeight - 24 - 100 * settings.scale - pointer.localY) / settings.scale;
     const distance = Math.hypot(dx, dy);
-    if (distance > 100 && distance < 550) {
+    if (distance > 20 && distance < 360) {
       look = (Math.round(Math.atan2(dx, dy) / (2 * Math.PI) * 16) + 16) % 16;
       if (orbit.observe(dx, dy, time)) { behavior.becomeDizzy(time); look = undefined; }
     }
@@ -236,6 +233,8 @@ async function boot(): Promise<void> {
     audio.load();
   }))]);
   settings = await window.hiho.ready();
+  voicePlayer = new GreetingVoicePlayer(voices, () => window.hiho.fatal());
+  voicePlayer.setMuted(settings.muted);
   resizeCanvas();
   nextCuriosity = performance.now() / 1000 + 12;
   requestAnimationFrame(animate);

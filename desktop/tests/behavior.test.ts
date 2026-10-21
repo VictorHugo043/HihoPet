@@ -5,7 +5,7 @@ import { PetBehavior, OrbitTracker, ShuffleBag } from '../src/shared/behavior.js
 test('a fast one-way drag lands without becoming dizzy', () => {
   const pet = new PetBehavior();
   pet.beginDrag(0);
-  for (let i = 0; i < 12; i++) pet.drag(1800, 100, i * 0.1);
+  for (let i = 0; i < 12; i++) pet.drag(i * 120, i * 10, i * 0.1);
   pet.endDrag(1.2);
   assert.equal(pet.mood, 'landing');
   pet.update(2);
@@ -15,7 +15,7 @@ test('a fast one-way drag lands without becoming dizzy', () => {
 test('repeated fast reversals lead through dizziness, anger and recovery', () => {
   const pet = new PetBehavior();
   pet.beginDrag(0);
-  for (let i = 0; i < 7; i++) pet.drag(i % 2 ? -2000 : 2000, 0, i * 0.15);
+  for (let i = 0; i < 9; i++) pet.drag(i % 2 ? -60 : 60, 0, i * 0.1);
   assert.equal(pet.shakeLevel, 1);
   pet.endDrag(1);
   assert.equal(pet.mood, 'dizzy');
@@ -32,12 +32,30 @@ test('repeated fast reversals lead through dizziness, anger and recovery', () =>
   assert.equal(pet.mood, 'idle');
 });
 
-test('slow movement and widely separated reversals do not trigger dizziness', () => {
-  for (const [speed, interval] of [[300, 0.15], [1800, 1]] as const) {
+test('smooth human turns trigger despite slowing to zero at each extremum', () => {
+  for (const diagonal of [false, true]) {
     const pet = new PetBehavior();
-    pet.beginDrag(0);
-    for (let i = 0; i < 10; i++) pet.drag(i % 2 ? -speed : speed, 0, i * interval);
-    pet.endDrag(10);
+    pet.beginDrag(0, 70, diagonal ? 70 : 0);
+    for (let i = 1; i <= 150; i++) {
+      const t = i / 60;
+      const x = 70 * Math.cos(t * 2 * Math.PI / 0.7);
+      pet.drag(x, diagonal ? x : 0, t);
+    }
+    assert.equal(pet.shakeLevel, 1);
+    pet.endDrag(2.6);
+    assert.equal(pet.mood, 'dizzy');
+  }
+});
+
+test('slow reversals and tiny high-frequency jitter do not cause dizziness', () => {
+  for (const [amplitude, period] of [[80, 5], [5, 0.15]]) {
+    const pet = new PetBehavior();
+    pet.beginDrag(0, amplitude, 0);
+    for (let i = 1; i <= 900; i++) {
+      const t = i / 60;
+      pet.drag(amplitude * Math.cos(t * 2 * Math.PI / period), 0, t);
+    }
+    pet.endDrag(15.1);
     assert.equal(pet.mood, 'landing');
   }
 });
@@ -70,7 +88,7 @@ test('continuous circles trigger in either direction', () => {
     const orbit = new OrbitTracker();
     let triggered = false;
     for (let i = 0; i <= 360; i++) {
-      const angle = direction * i / 360 * 6 * Math.PI;
+      const angle = direction * i / 360 * 4.1 * Math.PI;
       triggered ||= orbit.observe(190 * Math.sin(angle), 190 * Math.cos(angle), i / 60);
     }
     assert.equal(triggered, true);
@@ -107,4 +125,28 @@ test('greetings use all three variations without immediate repetition', () => {
     }
     assert.equal(new Set(batch).size, 3);
   }
+});
+
+test('close and off-centre circles accumulate without resetting near the body', () => {
+  for (const radius of [45, 85, 190]) {
+    const orbit = new OrbitTracker();
+    let triggered = false;
+    for (let i = 0; i <= 300; i++) {
+      const angle = i / 300 * 4.5 * Math.PI;
+      const x = radius * Math.sin(angle);
+      const y = radius * Math.cos(angle) + radius * 0.3;
+      if (orbit.observe(x, y, i / 60)) triggered = true;
+    }
+    assert.equal(triggered, true, `radius ${radius}`);
+  }
+});
+
+test('two deliberate slow circles retain progress across more than ten seconds', () => {
+  const orbit = new OrbitTracker();
+  let triggered = false;
+  for (let i = 0; i <= 900; i++) {
+    const angle = i / 900 * 4.2 * Math.PI;
+    if (orbit.observe(100 * Math.sin(angle), 100 * Math.cos(angle), i / 60)) triggered = true;
+  }
+  assert.equal(triggered, true);
 });

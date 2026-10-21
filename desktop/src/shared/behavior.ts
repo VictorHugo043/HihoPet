@@ -11,7 +11,10 @@ export class PetBehavior {
   private shaken = false;
   private grumpyWake = false;
   private reversals: number[] = [];
-  private previousVelocity = { x: 0, y: 0 };
+  private dragAnchor = { x: 0, y: 0 };
+  private dragPeak = { x: 0, y: 0 };
+  private dragDirection = { x: 0, y: 0 };
+  private strokeAt = 0;
 
   start(mood: Mood, time: number, duration = Infinity): void {
     this.mood = mood;
@@ -33,28 +36,44 @@ export class PetBehavior {
     this.start('jump', time, 0.9);
   }
 
-  beginDrag(time: number): void {
+  beginDrag(time: number, x = 0, y = 0): void {
     this.dragging = true;
     this.shaken = false;
     this.shakeLevel = 0;
     this.grumpyWake = false;
     this.reversals = [];
-    this.previousVelocity = { x: 0, y: 0 };
+    this.dragAnchor = this.dragPeak = { x, y };
+    this.dragDirection = { x: 0, y: 0 };
+    this.strokeAt = time;
     this.start('held', time);
   }
 
   drag(x: number, y: number, time: number): void {
     if (!this.dragging) return;
-    const speed = Math.hypot(x, y);
-    const previousSpeed = Math.hypot(this.previousVelocity.x, this.previousVelocity.y);
-    const dot = x * this.previousVelocity.x + y * this.previousVelocity.y;
-    this.reversals = this.reversals.filter(t => time - t <= 1.8);
-    // A fast one-way reposition is not a shake; repeated substantial reversals are required.
-    if (speed > 650 && previousSpeed > 650 && dot < -0.45 * speed * previousSpeed &&
-        time - (this.reversals.at(-1) ?? -Infinity) > 0.095) this.reversals.push(time);
-    if (speed > 150) this.previousVelocity = { x, y };
-    this.shakeLevel = Math.min(1, this.reversals.length / 5);
-    if (this.reversals.length >= 5) this.shaken = true;
+    this.reversals = this.reversals.filter(t => time - t <= 3);
+    const dx = x - this.dragAnchor.x, dy = y - this.dragAnchor.y;
+    const length = Math.hypot(dx, dy);
+    if (!this.dragDirection.x && !this.dragDirection.y) {
+      if (length < 24) return;
+      this.dragDirection = { x: dx / length, y: dy / length };
+      this.dragPeak = { x, y };
+      this.strokeAt = time;
+    } else {
+      const along = (x - this.dragPeak.x) * this.dragDirection.x + (y - this.dragPeak.y) * this.dragDirection.y;
+      if (along >= 0) this.dragPeak = { x, y };
+      // Measure a complete return stroke, including the natural slowdown at its turn.
+      else if (along <= -24) {
+        if (time - this.strokeAt <= 0.8) this.reversals.push(time);
+        this.dragAnchor = this.dragPeak;
+        const rx = x - this.dragPeak.x, ry = y - this.dragPeak.y;
+        const distance = Math.hypot(rx, ry);
+        this.dragDirection = { x: rx / distance, y: ry / distance };
+        this.dragPeak = { x, y };
+        this.strokeAt = time;
+      }
+    }
+    this.shakeLevel = this.shaken ? 1 : Math.min(1, this.reversals.length / 4);
+    if (this.reversals.length >= 4) this.shaken = true;
   }
 
   endDrag(time: number): void {
@@ -119,9 +138,9 @@ export class OrbitTracker {
 
   observe(x: number, y: number, time: number): boolean {
     const radius = Math.hypot(x, y);
-    if (radius < 100 || radius > 550) { this.reset(); return false; }
+    if (radius < 20 || radius > 360) { this.reset(); return false; }
     const angle = Math.atan2(x, y);
-    if (this.lastAngle === undefined || time - this.lastTime >= 0.35 || time - this.startedAt >= 8) {
+    if (this.lastAngle === undefined || time - this.lastTime >= 0.7 || time - this.startedAt >= 20) {
       this.reset();
       this.lastAngle = angle;
       this.startedAt = this.lastTime = time;
@@ -130,8 +149,8 @@ export class OrbitTracker {
     const delta = Math.atan2(Math.sin(angle - this.lastAngle), Math.cos(angle - this.lastAngle));
     this.lastAngle = angle;
     this.lastTime = time;
-    if (Math.abs(delta) >= 0.75) { this.reset(); return false; }
-    if (Math.abs(delta) <= 0.004) return false;
+    if (Math.abs(delta) >= 1.5) { this.reset(); return false; }
+    if (Math.abs(delta) <= 0.0001) return false;
     const sign = Math.sign(delta);
     if (!this.direction) this.direction = sign;
     if (sign === this.direction) {
@@ -147,7 +166,7 @@ export class OrbitTracker {
         this.startedAt = time;
       }
     }
-    if (this.travel >= 5 * Math.PI) { this.reset(); return true; }
+    if (this.travel >= 4 * Math.PI) { this.reset(); return true; }
     return false;
   }
 }
