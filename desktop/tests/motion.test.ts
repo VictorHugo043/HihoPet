@@ -66,7 +66,7 @@ test('music motion stays still in silence and fades after sound stops', () => {
   const signal = new MusicSignal();
   for (let i = 0; i < 60; i++) assert.equal(signal.update(0, 0, i / 30).energy, 0);
   let value = { energy: 0, phase: 0 };
-  for (let i = 60; i < 120; i++) value = signal.update(0.06, i % 15 === 0 ? 0.8 : 0.1, i / 30);
+  for (let i = 60; i < 120; i++) value = signal.update(0.06, i % 15 === 0 ? 0.04 : 0.008, i / 30);
   assert.ok(value.energy > 0.4);
   for (let i = 120; i < 180; i++) value = signal.update(0, 0, i / 30);
   assert.equal(value.energy, 0);
@@ -98,14 +98,14 @@ test('music deforms one seated pose with a fixed base and volume-dependent compr
   }
 });
 
-test('audio and deformation react to a volume attack within two display frames', () => {
+test('confirmed system drum attacks compress within four display frames', () => {
   const signal = new MusicSignal();
   signal.update(0, 0, 1);
   const smoother = new MotionSmoother();
   let next;
-  for (let frame = 1; frame <= 2; frame++) {
-    const value = signal.update(0.12, 0.8, 1 + frame / 60);
-    next = smoother.update(motionTarget('idle', 0, 0, 0, value.energy, value.phase, undefined, 'song', value.pulse), 1 / 60, true);
+  for (let frame = 1; frame <= 4; frame++) {
+    const value = signal.update(0.12, 0.08, 1 + frame / 60);
+    next = smoother.update(motionTarget('idle', 0, 0, 0, value.energy, value.phase, undefined, 'system', value.pulse), 1 / 60, true);
   }
   assert.ok(next);
   assert.ok(next.sy < 0.81);

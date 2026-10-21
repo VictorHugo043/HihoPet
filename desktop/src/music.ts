@@ -27,16 +27,20 @@ button.addEventListener('click', async () => {
     if (!capture.getAudioTracks().length) { capture.getTracks().forEach(track => track.stop()); throw new Error('No system audio'); }
     stream = capture;
     context = new AudioContext(); await context.resume();
-    const analyser = context.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.05;
-    context.createMediaStreamSource(capture).connect(analyser);
-    const wave = new Float32Array(analyser.fftSize), spectrum = new Uint8Array(analyser.frequencyBinCount);
+    const source = context.createMediaStreamSource(capture);
+    const analyser = context.createAnalyser(); analyser.fftSize = 1024;
+    source.connect(analyser);
+    const highpass = context.createBiquadFilter(); highpass.type = 'highpass'; highpass.frequency.value = 40; highpass.Q.value = Math.SQRT1_2;
+    const lowpass = context.createBiquadFilter(); lowpass.type = 'lowpass'; lowpass.frequency.value = 180; lowpass.Q.value = Math.SQRT1_2;
+    const bassAnalyser = context.createAnalyser(); bassAnalyser.fftSize = 1024;
+    source.connect(highpass).connect(lowpass).connect(bassAnalyser);
+    const wave = new Float32Array(analyser.fftSize), bassWave = new Float32Array(bassAnalyser.fftSize);
     const signal = new MusicSignal();
     timer = setInterval(() => {
-      analyser.getFloatTimeDomainData(wave); analyser.getByteFrequencyData(spectrum);
+      analyser.getFloatTimeDomainData(wave); bassAnalyser.getFloatTimeDomainData(bassWave);
       let square = 0; for (const sample of wave) square += sample * sample;
-      let bass = 0; const bins = Math.max(1, Math.floor(200 / (context!.sampleRate / analyser.fftSize)));
-      for (let i = 1; i <= bins; i++) bass += spectrum[i] / 255;
-      const value = signal.update(Math.sqrt(square / wave.length), bass / bins, performance.now() / 1000);
+      let bassSquare = 0; for (const sample of bassWave) bassSquare += sample * sample;
+      const value = signal.update(Math.sqrt(square / wave.length), Math.sqrt(bassSquare / bassWave.length), performance.now() / 1000);
       window.hiho.music({ active: true, ...value });
     }, 1000 / 60);
     capture.getAudioTracks()[0].addEventListener('ended', () => { stop(); button.disabled = false; status.textContent = '聆听已结束，随时可以再来一首。'; });
