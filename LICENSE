@@ -3,6 +3,11 @@ HIHO Pet — Rights Notice / 权利说明
 All rights reserved, to the extent rights subsist in the contributions to this repository.
 本仓库贡献中依法成立的权利予以保留。
 
+Exception: application source, build scripts and tests under desktop/src,
+desktop/scripts and desktop/tests are licensed under desktop/LICENSE (MIT).
+This exception excludes artwork, icons, recordings and third-party rights.
+例外：desktop/src、desktop/scripts 和 desktop/tests 中的应用代码、构建脚本和测试采用 desktop/LICENSE 中的 MIT 许可；美术、图标、录音及第三方权益不包含在此例外内。
+
 Jack Frost / ジャックフロスト and the associated Shin Megami Tensei and Persona characters, names and trademarks belong to ATLUS, SEGA and their respective rights holders. This is an unofficial fan work and is not affiliated with or endorsed by them.
 杰克霜精及《真·女神转生》《女神异闻录》相关角色、名称和商标权益归 ATLUS、SEGA 及各自权利人所有。本项目为非官方同人作品，与官方无隶属或背书关系。
 
