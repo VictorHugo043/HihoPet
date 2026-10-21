@@ -22,7 +22,9 @@ try {
     appBundleId: 'io.github.VictorHugo043.HihoPet', appVersion: metadata.version,
     appCategoryType: 'public.app-category.entertainment',
     icon: join(root, 'assets', 'Hiho.icns'), asar: true, overwrite: true,
-    extendInfo: { LSUIElement: true, NSHumanReadableCopyright: 'Unofficial Jack Frost fan project. See bundled rights notices.' }
+    extendInfo: { LSUIElement: true,
+      NSAudioCaptureUsageDescription: 'Hiho 仅在你开启音乐律动时分析系统播放的声音，不保存或上传音频。',
+      NSHumanReadableCopyright: 'Unofficial Jack Frost fan project. See bundled rights notices.' }
   });
   const bundle = join(output, 'Hiho.app');
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'inherit' });

@@ -1,14 +1,20 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray, dialog, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, session, Tray, dialog, type MenuItemConstructorOptions } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { MenuAction, PointerSample, Settings } from './bridge.js';
+import type { MenuAction, PointerSample, Settings, MusicSample } from './bridge.js';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let settings: Settings = { muted: false, scale: 1.5 };
 let sleeping = false;
+let canChase = true;
+let chasingUntil = 0;
+let chasePosition: { x: number; y: number } | undefined;
+let musicWindow: BrowserWindow | undefined;
+let musicActive = false;
+let captureAllowedUntil = 0;
 let dragging = false;
 let opaque = false;
 let dragOrigin = { x: 0, y: 0 };
@@ -43,6 +49,35 @@ function send(action: MenuAction): void { window?.webContents.send('hiho:action'
 
 function updateHit(): void { window?.setIgnoreMouseEvents(!opaque && !dragging, { forward: true }); }
 
+function stopChasing(): void {
+  chasingUntil = 0;
+  chasePosition = undefined;
+  send({ type: 'chase', active: false });
+  save();
+}
+
+function toggleMusic(): void {
+  if (musicActive) {
+    musicWindow?.webContents.send('hiho:action', { type: 'stopMusic' });
+    musicActive = false;
+    send({ type: 'music', sample: { active: false, energy: 0, phase: 0 } });
+    return;
+  }
+  if (musicWindow && !musicWindow.isDestroyed()) { musicWindow.show(); musicWindow.focus(); return; }
+  musicWindow = new BrowserWindow({ width: 380, height: 340, title: '跟着音乐动 · Hiho',
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    backgroundColor: '#f6faff', webPreferences: { preload: join(directory, 'preload.cjs'),
+      nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+  musicWindow.setMenuBarVisibility(false);
+  musicWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  musicWindow.webContents.on('will-navigate', event => event.preventDefault());
+  musicWindow.loadFile(join(directory, 'music.html'));
+  musicWindow.on('closed', () => {
+    musicWindow = undefined; musicActive = false; captureAllowedUntil = 0;
+    send({ type: 'music', sample: { active: false, energy: 0, phase: 0 } });
+  });
+}
+
 function setScale(scale: number): void {
   if (!window || !scales.includes(scale)) return;
   const bounds = window.getBounds();
@@ -60,6 +95,12 @@ function menu(): Menu {
     { label: 'Hiho', enabled: false },
     { type: 'separator' },
     { label: '跳支舞', click: () => send({ type: 'dance' }) },
+    { label: '喂一颗雪球', click: () => send({ type: 'feed' }) },
+    { label: chasingUntil ? '不逗了，让它歇歇' : '逗逗它', click: () => {
+      if (chasingUntil) stopChasing();
+      else { chasingUntil = performance.now() / 1000 + 15; chasePosition = undefined; send({ type: 'chase', active: true }); }
+    } },
+    { label: musicActive ? '停止跟随音乐' : '跟着音乐动', click: toggleMusic },
     { label: sleeping ? '轻轻叫醒' : '睡个小觉', click: () => send({ type: 'sleep' }) },
     { label: '安静模式', type: 'checkbox', checked: settings.muted, click: item => {
       settings.muted = item.checked;
@@ -83,11 +124,26 @@ function startPointerPolling(): void {
     const time = performance.now() / 1000;
     const dt = Math.max(1 / 240, time - previousSample.time);
     const moved = point.x !== lastPointer.x || point.y !== lastPointer.y;
+    if (chasingUntil && time >= chasingUntil) stopChasing();
     if (dragging) {
       window.setPosition(Math.round(dragOrigin.x + point.x - dragPointer.x), Math.round(dragOrigin.y + point.y - dragPointer.y));
+    } else if (chasingUntil && canChase) {
+      const bounds = window.getBounds();
+      const dx = point.x - (bounds.x + bounds.width / 2);
+      const dy = point.y - (bounds.y + bounds.height - 24 - 100 * settings.scale);
+      const distance = Math.hypot(dx, dy);
+      if (distance > 85 && distance < 750) {
+        chasePosition ??= { x: bounds.x, y: bounds.y };
+        const step = Math.min(distance - 85, 240 * dt);
+        chasePosition.x += dx / distance * step; chasePosition.y += dy / distance * step;
+        const area = screen.getDisplayMatching(bounds).workArea;
+        chasePosition.x = Math.max(area.x, Math.min(chasePosition.x, area.x + area.width - bounds.width));
+        chasePosition.y = Math.max(area.y, Math.min(chasePosition.y, area.y + area.height - bounds.height));
+        window.setPosition(Math.round(chasePosition.x), Math.round(chasePosition.y));
+      }
     }
     // Motion is sampled globally even when the transparent window passes mouse clicks through.
-    if (moved || dragging) {
+    if (moved || dragging || chasingUntil) {
       const bounds = window.getBounds();
       const sample: PointerSample = { ...point, localX: point.x - bounds.x, localY: point.y - bounds.y,
         vx: (point.x - previousSample.x) / dt, vy: (point.y - previousSample.y) / dt, moved };
@@ -111,6 +167,13 @@ else {
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
     preferencesPath = join(app.getPath('userData'), 'preferences.json');
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      if (!musicWindow || request.frame !== musicWindow.webContents.mainFrame ||
+          !request.audioRequested || performance.now() > captureAllowedUntil) { callback(null); return; }
+      captureAllowedUntil = 0;
+      // Chromium requires a video track. Capture only our own control window, then discard it.
+      callback({ video: request.frame, audio: 'loopback' });
+    });
     let saved: { x?: number; y?: number } = {};
     try {
       const value = JSON.parse(readFileSync(preferencesPath, 'utf8'));
@@ -168,12 +231,26 @@ else {
   ipcMain.on('hiho:drag-start', event => {
     if (event.sender !== window?.webContents) return;
     dragging = true;
+    if (chasingUntil) stopChasing();
     updateHit();
   });
   ipcMain.on('hiho:drag-end', event => { if (event.sender === window?.webContents) finishDrag(); });
   ipcMain.on('hiho:menu', event => { if (event.sender === window?.webContents && window) menu().popup({ window }); });
-  ipcMain.on('hiho:mood', (event, value) => {
-    if (event.sender === window?.webContents && typeof value === 'boolean') sleeping = value;
+  ipcMain.on('hiho:mood', (event, value, chase) => {
+    if (event.sender === window?.webContents && typeof value === 'boolean' && typeof chase === 'boolean') {
+      sleeping = value; canChase = chase; if (!canChase) chasePosition = undefined;
+    }
+  });
+  ipcMain.handle('hiho:authorize-music', event => {
+    if (event.sender !== musicWindow?.webContents) throw new Error('Unknown window');
+    captureAllowedUntil = performance.now() + 10000;
+  });
+  ipcMain.on('hiho:music', (event, value: MusicSample) => {
+    if (event.sender !== musicWindow?.webContents || !value || typeof value.active !== 'boolean' ||
+        !Number.isFinite(value.energy) || !Number.isFinite(value.phase)) return;
+    if (value.active && !musicActive) musicWindow?.hide();
+    musicActive = value.active;
+    send({ type: 'music', sample: { active: musicActive, energy: Math.max(0, Math.min(1, value.energy)), phase: value.phase } });
   });
   ipcMain.on('hiho:fatal', event => {
     if (event.sender !== window?.webContents) return;

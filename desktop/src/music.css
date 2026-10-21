@@ -1,0 +1,7 @@
+body { margin: 0; padding: 26px 30px 18px; background: #f6faff; color: #26466f; text-align: center; font: 14px/1.6 -apple-system, BlinkMacSystemFont, sans-serif; }
+.snow { color: #5395dd; font-size: 30px; }
+h1 { margin: 5px 0 12px; color: #2456a5; font-size: 21px; }
+p { margin: 0 0 18px; }
+button { border: none; border-radius: 20px; padding: 10px 30px; background: #3075cc; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .5; cursor: wait; }
+.note { margin-top: 17px; color: #6d819a; font-size: 12px; }

@@ -8,14 +8,15 @@ interface VoiceClip {
 }
 
 /** Keeps one pending greeting so rapid clicks neither cut syllables nor build a long queue. */
-export class GreetingVoicePlayer {
+export class VoicePlayer {
   private readonly bag: ShuffleBag;
   private active: number | undefined;
   private pending: number | undefined;
   private muted = false;
 
-  constructor(private readonly clips: VoiceClip[], private readonly onError: () => void, random = Math.random) {
-    this.bag = new ShuffleBag(clips.length, random);
+  constructor(private readonly clips: VoiceClip[], private readonly onError: () => void,
+    private readonly options: { greetingCount: number; onStart: (index: number) => void; random?: () => number }) {
+    this.bag = new ShuffleBag(options.greetingCount, options.random);
     clips.forEach((clip, index) => clip.addEventListener('ended', () => {
       if (this.active !== index) return;
       this.active = undefined;
@@ -26,11 +27,21 @@ export class GreetingVoicePlayer {
   }
 
   request(): number {
-    if (this.muted) return this.bag.next();
+    if (this.muted) {
+      const index = this.bag.next();
+      this.options.onStart(index);
+      return index;
+    }
     if (this.active !== undefined) return this.pending ??= this.bag.next();
     const index = this.bag.next();
     this.play(index);
     return index;
+  }
+
+  emote(index: number): void {
+    this.stop();
+    if (this.muted) this.options.onStart(index);
+    else this.play(index);
   }
 
   setMuted(muted: boolean): void {
@@ -45,6 +56,7 @@ export class GreetingVoicePlayer {
 
   private play(index: number): void {
     this.active = index;
+    this.options.onStart(index);
     this.clips[index].currentTime = 0;
     this.clips[index].play().catch(error => {
       if (error?.name !== 'AbortError' && this.active === index) this.onError();

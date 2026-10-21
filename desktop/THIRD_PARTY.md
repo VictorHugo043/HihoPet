@@ -8,9 +8,18 @@ Hiho 是 Jack Frost（杰克霜精）的非官方同人桌宠，与 ATLUS、SEGA
 
 ## Hi-ho 叫声
 
-`assets/heeho-1.mp3` 使用公开社区页面 [jack frost hee ho](https://tuna.voicemod.net/sound/b739cf0e-0167-49c7-9d46-2ba87aa15045) 的短录音；页面上传者为 MutedWaveformSine8944。`heeho-2.mp3` 为同一录音提高音调和节奏的轻快变化，`heeho-3.mp3` 为同一录音以短间隔连续播放两次的变化。
+| 素材 | 来源与片段 |
+| --- | --- |
+| `heeho-1.mp3` | [jack frost hee ho](https://tuna.voicemod.net/sound/b739cf0e-0167-49c7-9d46-2ba87aa15045)，上传者 MutedWaveformSine8944 |
+| `voice-hello.mp3` | [dev058_vo.awb_3](https://www.101soundboards.com/sounds/56885862-dev058-voawb-3-hiho) |
+| `voice-bright.mp3` | [dev058_vo.awb_14](https://www.101soundboards.com/sounds/56885683-dev058-voawb-14-hiho) |
+| `voice-double.mp3` | [dev058_vo.awb_17](https://www.101soundboards.com/sounds/56885733-dev058-voawb-17-hirohiro) |
+| `voice-dizzy.mp3` | [dev058_vo.awb_16](https://www.101soundboards.com/sounds/56885714-dev058-voawb-16-hiiho) |
+| `voice-angry.mp3` | [dev058_vo.awb_19](https://www.101soundboards.com/sounds/56885764-dev058-voawb-19-hiha) |
 
-该社区来源不构成版权许可证明。本项目不主张拥有原始录音或角色声音的权利，也不将其纳入 MIT 许可。公开分发与其他用途需取得相应权利人的必要许可。
+101soundboards 将这些片段收录于 Jack Frost / Shin Megami Tensei V 角色音板。素材仅裁去首尾静音并统一响度，情绪用途是本项目的创作编排，不代表游戏原有的语音分类。气泡文字以简短拟声词表达叫声。
+
+社区来源不构成版权许可证明。本项目不主张拥有原始录音或角色声音的权利，也不将其纳入 MIT 许可。公开分发与其他用途需取得相应权利人的必要许可。
 
 ## 运行时
 

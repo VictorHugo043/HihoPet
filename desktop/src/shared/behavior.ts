@@ -1,4 +1,4 @@
-export type Mood = 'idle' | 'greeting' | 'delighted' | 'jump' | 'held' | 'landing' | 'dizzy' | 'waking' | 'angry' | 'pout' | 'dance' | 'sleeping' | 'curious';
+export type Mood = 'idle' | 'greeting' | 'delighted' | 'jump' | 'held' | 'landing' | 'dizzy' | 'waking' | 'angry' | 'pout' | 'dance' | 'sleeping' | 'curious' | 'petted' | 'feeding' | 'chasing';
 
 /** Monotonic seconds keep gesture recognition independent of display refresh rate. */
 export class PetBehavior {
@@ -105,6 +105,18 @@ export class PetBehavior {
     if (this.mood === 'idle' && !this.dragging) this.start('curious', time, 2.1);
   }
 
+  pet(time: number): boolean {
+    if (!['idle', 'curious', 'pout'].includes(this.mood) || this.dragging) return false;
+    this.start('petted', time, 2.4);
+    return true;
+  }
+
+  feed(time: number): boolean {
+    if (this.dragging || ['dizzy', 'waking', 'sleeping'].includes(this.mood)) return false;
+    this.start('feeding', time, 3.2);
+    return true;
+  }
+
   update(time: number): void {
     if (this.dragging) return;
     while (time >= this.deadline) {
@@ -119,6 +131,43 @@ export class PetBehavior {
         this.start('idle', next);
       }
     }
+  }
+}
+
+export class PettingTracker {
+  private previous: { x: number; y: number; time: number } | undefined;
+  private travel = 0;
+  private direction = 0;
+  private turns = 0;
+  private startedAt = 0;
+  private cooldown = 0;
+  private strokeAnchor = 0;
+
+  observe(x: number, y: number, time: number, overHead: boolean): boolean {
+    if (!overHead || time < this.cooldown) { this.previous = undefined; this.travel = this.turns = 0; return false; }
+    if (!this.previous || time - this.previous.time > 0.35 || time - this.startedAt > 2.5) {
+      this.previous = { x, y, time }; this.startedAt = time; this.travel = this.turns = this.direction = 0;
+      this.strokeAnchor = x;
+      return false;
+    }
+    const dx = x - this.previous.x;
+    const distance = Math.hypot(dx, y - this.previous.y);
+    const speed = distance / Math.max(1 / 240, time - this.previous.time);
+    this.previous = { x, y, time };
+    if (speed > 850) { this.travel = this.turns = 0; return false; }
+    this.travel += distance;
+    if (Math.abs(x - this.strokeAnchor) >= 8) {
+      const direction = Math.sign(x - this.strokeAnchor);
+      if (this.direction && direction !== this.direction) this.turns++;
+      this.direction = direction;
+      this.strokeAnchor = x;
+    }
+    if (this.travel >= 75 && this.turns >= 2) {
+      this.cooldown = time + 3;
+      this.previous = undefined;
+      return true;
+    }
+    return false;
   }
 }
 

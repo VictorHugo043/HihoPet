@@ -8,7 +8,9 @@ const bridge: PetBridge = {
   startDrag: () => ipcRenderer.send('hiho:drag-start'),
   endDrag: () => ipcRenderer.send('hiho:drag-end'),
   contextMenu: () => ipcRenderer.send('hiho:menu'),
-  mood: sleeping => ipcRenderer.send('hiho:mood', sleeping),
+  mood: (sleeping, canChase) => ipcRenderer.send('hiho:mood', sleeping, canChase),
+  authorizeMusic: () => ipcRenderer.invoke('hiho:authorize-music'),
+  music: sample => ipcRenderer.send('hiho:music', sample),
   fatal: () => ipcRenderer.send('hiho:fatal'),
   onPointer: callback => ipcRenderer.on('hiho:pointer', (_event, sample: PointerSample) => callback(sample)),
   onAction: callback => ipcRenderer.on('hiho:action', (_event, action: MenuAction) => callback(action))

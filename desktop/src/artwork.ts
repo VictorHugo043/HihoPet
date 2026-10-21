@@ -1,75 +1,115 @@
-import type { PetBehavior } from './shared/behavior.js';
+import type { MotionPose } from './shared/motion.js';
 
-export type SpriteFrame = { sheet: HTMLImageElement; x: number; y: number; width: number; height: number; alpha: Uint8Array };
+const vertexShader = `#version 300 es
+in vec2 position;
+out vec2 uv;
+uniform float headAngle;
+uniform vec2 arms;
+uniform vec2 legs;
+uniform vec2 lifts;
+vec2 turn(vec2 p, vec2 pivot, float angle) {
+  vec2 q = p - pivot;
+  return pivot + mat2(cos(angle), sin(angle), -sin(angle), cos(angle)) * q;
+}
+void main() {
+  uv = position / vec2(384.0, 416.0);
+  vec2 p = position;
+  float neck = 1.0 - smoothstep(250.0, 318.0, position.y);
+  p = mix(p, turn(p, vec2(192.0, 286.0), headAngle), neck);
+  float armY = smoothstep(282.0, 312.0, position.y) * (1.0 - smoothstep(337.0, 360.0, position.y));
+  float leftArm = armY * (1.0 - smoothstep(132.0, 153.0, position.x));
+  float rightArm = armY * smoothstep(218.0, 240.0, position.x);
+  p = mix(p, turn(p, vec2(142.0, 298.0), arms.x), leftArm);
+  p = mix(p, turn(p, vec2(224.0, 300.0), arms.y), rightArm);
+  float legY = smoothstep(337.0, 370.0, position.y);
+  float leftLeg = legY * (1.0 - smoothstep(178.0, 190.0, position.x));
+  float rightLeg = legY * smoothstep(188.0, 200.0, position.x);
+  p = mix(p, turn(p, vec2(155.0, 340.0), legs.x) + vec2(0.0, lifts.x * 2.0), leftLeg);
+  p = mix(p, turn(p, vec2(204.0, 340.0), legs.y) + vec2(0.0, lifts.y * 2.0), rightLeg);
+  gl_Position = vec4(p.x / 192.0 - 1.0, 1.0 - p.y / 208.0, 0.0, 1.0);
+}`;
+const fragmentShader = `#version 300 es
+precision mediump float;
+in vec2 uv;
+out vec4 color;
+uniform sampler2D atlas;
+uniform vec2 currentCell;
+uniform vec2 previousCell;
+uniform float blend;
+void main() {
+  vec2 grid = vec2(4.0, 6.0);
+  vec4 current = texture(atlas, (currentCell + uv) / grid);
+  vec4 previous = texture(atlas, (previousCell + uv) / grid);
+  color = mix(previous, current, blend);
+}`;
 
+/** One connected mesh keeps the original neck pixels intact through every deformation. */
 export class Artwork {
-  readonly rows: SpriteFrame[][] = [];
-  readonly extra = new Map<string, SpriteFrame[]>();
+  private canvas = document.createElement('canvas');
+  private gl!: WebGL2RenderingContext;
+  private program!: WebGLProgram;
+  private indexCount = 0;
+  private frame = 0;
+  private previousFrame = 0;
+  private changedAt = -Infinity;
+  private inverse = new DOMMatrix();
+  private pixel = new Uint8Array(4);
+  private uniforms = new Map<string, WebGLUniformLocation | null>();
 
   async load(): Promise<void> {
-    const atlas = await this.image('codex');
-    if (atlas.width !== 1536 || atlas.height !== 2288) throw new Error('Invalid base atlas');
-    const counts = [6, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8];
-    const raw = this.pixels(atlas);
-    counts.forEach((count, row) => this.rows.push(Array.from({ length: count }, (_, col) => this.frame(atlas, raw, col * 192, row * 208, 192, 208))));
-    await Promise.all(['held', 'dizzy', 'angry', 'sleep', 'dance', 'greeting', 'jump'].map(async name => {
-      const sheet = await this.image(name);
-      const count = name === 'jump' ? 12 : 8;
-      if (sheet.width !== 1536 || sheet.height !== count / 4 * 416) throw new Error('Invalid animation');
-      const pixels = this.pixels(sheet);
-      this.extra.set(name, Array.from({ length: count }, (_, i) => this.frame(sheet, pixels, i % 4 * 384, Math.floor(i / 4) * 416, 384, 416)));
-    }));
-  }
-
-  private async image(name: string): Promise<HTMLImageElement> {
-    const image = new Image();
-    image.src = new URL(`assets/${name}.png`, import.meta.url).href;
-    await image.decode();
-    return image;
-  }
-
-  private pixels(image: HTMLImageElement): Uint8ClampedArray {
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true })!;
-    context.drawImage(image, 0, 0);
-    return context.getImageData(0, 0, image.width, image.height).data;
-  }
-
-  private frame(sheet: HTMLImageElement, pixels: Uint8ClampedArray, x: number, y: number, width: number, height: number): SpriteFrame {
-    const alpha = new Uint8Array(192 * 208);
-    const scale = width / 192;
-    for (let py = 0; py < 208; py++) for (let px = 0; px < 192; px++) {
-      alpha[py * 192 + px] = pixels[((y + py * scale) * sheet.width + x + px * scale) * 4 + 3];
-    }
-    return { sheet, x, y, width, height, alpha };
-  }
-
-  select(behavior: PetBehavior, time: number, look?: number): SpriteFrame {
-    const t = Math.max(0, time - behavior.beganAt);
-    const standard = (row: number, rate: number): SpriteFrame => this.rows[row][Math.floor(t * rate) % this.rows[row].length];
-    const custom = (name: string, index: number): SpriteFrame => {
-      const frames = this.extra.get(name)!;
-      return frames[Math.max(0, Math.min(frames.length - 1, index))];
+    this.canvas.width = 384; this.canvas.height = 416;
+    const gl = this.canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+    if (!gl) throw new Error('WebGL unavailable');
+    this.gl = gl;
+    const compile = (type: number, text: string): WebGLShader => {
+      const shader = gl.createShader(type)!; gl.shaderSource(shader, text); gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error('Invalid character shader');
+      return shader;
     };
-    switch (behavior.mood) {
-      case 'idle': {
-        if (look !== undefined) return this.rows[9 + Math.floor(look / 8)][look % 8];
-        const sequence = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 3, 4, 5, 5, 5, 5];
-        return this.rows[0][sequence[Math.floor(t * 5) % sequence.length]];
-      }
-      case 'greeting': case 'delighted': return custom('greeting', (Math.floor(t * 9) + behavior.greetingVariant * 2) % 8);
-      case 'jump': return custom('jump', Math.min(11, Math.floor(t / 0.9 * 12)));
-      case 'held': return behavior.shakeLevel >= 1 ? custom('dizzy', 2 + Math.floor(t * 12) % 5) : custom('held', Math.floor(t * 11) % 8);
-      case 'landing': return this.rows[0][0];
-      case 'dizzy': return custom('dizzy', [2, 3, 4, 5, 6, 5, 4, 3][Math.floor(t * 11) % 8]);
-      case 'waking': return custom('sleep', Math.max(0, 3 - Math.floor(t * 5)));
-      case 'angry': return custom('angry', Math.floor(t * 12) % 8);
-      case 'pout': return custom('angry', 7);
-      case 'dance': return custom('dance', Math.floor(t * 12) % 8);
-      case 'sleeping': return custom('sleep', t < 1.6 ? Math.floor(t * 5) : 4 + Math.floor((t - 1.6) * 2) % 4);
-      case 'curious': return standard(7, 5);
+    const program = gl.createProgram()!;
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexShader));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentShader)); gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Character shader unavailable');
+    this.program = program; gl.useProgram(program);
+    for (const name of ['headAngle', 'arms', 'legs', 'lifts', 'currentCell', 'previousCell', 'blend']) this.uniforms.set(name, gl.getUniformLocation(program, name));
+    const vertices: number[] = [], indices: number[] = [];
+    for (let y = 0; y <= 26; y++) for (let x = 0; x <= 24; x++) vertices.push(x * 16, y * 16);
+    for (let y = 0; y < 26; y++) for (let x = 0; x < 24; x++) {
+      const a = y * 25 + x; indices.push(a, a + 1, a + 25, a + 1, a + 26, a + 25);
     }
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    const position = gl.getAttribLocation(program, 'position'); gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW); this.indexCount = indices.length;
+    const image = new Image(); image.src = new URL('assets/character.png', import.meta.url).href; await image.decode();
+    if (image.width !== 1536 || image.height !== 2496) throw new Error('Invalid character artwork');
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture()); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.clearColor(0, 0, 0, 0);
+  }
+
+  draw(context: CanvasRenderingContext2D, pose: MotionPose, time: number): void {
+    if (pose.frame !== this.frame) { this.previousFrame = this.frame; this.frame = pose.frame; this.changedAt = time; }
+    const gl = this.gl;
+    const location = (name: string): WebGLUniformLocation | null => this.uniforms.get(name)!;
+    gl.uniform1f(location('headAngle'), pose.headAngle);
+    gl.uniform2f(location('arms'), pose.armLeft, pose.armRight);
+    gl.uniform2f(location('legs'), pose.legLeft, pose.legRight);
+    gl.uniform2f(location('lifts'), pose.liftLeft, pose.liftRight);
+    gl.uniform2f(location('currentCell'), this.frame % 4, Math.floor(this.frame / 4));
+    gl.uniform2f(location('previousCell'), this.previousFrame % 4, Math.floor(this.previousFrame / 4));
+    gl.uniform1f(location('blend'), Math.min(1, (time - this.changedAt) / 0.16));
+    gl.clear(gl.COLOR_BUFFER_BIT); gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
+    this.inverse = context.getTransform().inverse();
+    context.drawImage(this.canvas, -96, -208, 192, 208);
+  }
+
+  hit(x: number, y: number): { opaque: boolean; head: boolean } {
+    const point = this.inverse.transformPoint(new DOMPoint(x, y));
+    const px = Math.floor((point.x + 96) * 2), py = Math.floor((point.y + 208) * 2);
+    if (px < 0 || px >= 384 || py < 0 || py >= 416) return { opaque: false, head: false };
+    this.gl.readPixels(px, 415 - py, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, this.pixel);
+    return { opaque: this.pixel[3] > 28, head: this.pixel[3] > 28 && py < 290 };
   }
 }

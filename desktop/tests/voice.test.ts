@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GreetingVoicePlayer } from '../src/shared/voice.js';
+import { VoicePlayer } from '../src/shared/voice.js';
 
 class Clip {
   currentTime = 0;
@@ -14,7 +14,7 @@ class Clip {
 
 test('completed greetings play three distinct variations without repeats', () => {
   const clips = [new Clip(), new Clip(), new Clip()];
-  const player = new GreetingVoicePlayer(clips, () => assert.fail('Playback failed'), () => 0.4);
+  const player = new VoicePlayer(clips, () => assert.fail('Playback failed'), { greetingCount: 3, onStart: () => {}, random: () => 0.4 });
   const indices = [];
   for (let i = 0; i < 3; i++) {
     const index = player.request();
@@ -27,7 +27,7 @@ test('completed greetings play three distinct variations without repeats', () =>
 
 test('rapid clicks finish the current sound and queue one different greeting', () => {
   const clips = [new Clip(), new Clip(), new Clip()];
-  const player = new GreetingVoicePlayer(clips, () => assert.fail('Playback failed'), () => 0.4);
+  const player = new VoicePlayer(clips, () => assert.fail('Playback failed'), { greetingCount: 3, onStart: () => {}, random: () => 0.4 });
   const first = player.request();
   const pending = player.request();
   assert.notEqual(pending, first);
@@ -43,7 +43,7 @@ test('rapid clicks finish the current sound and queue one different greeting', (
 test('muting or dragging clears pending audio', () => {
   for (const mute of [true, false]) {
     const clips = [new Clip(), new Clip(), new Clip()];
-    const player = new GreetingVoicePlayer(clips, () => assert.fail('Playback failed'));
+    const player = new VoicePlayer(clips, () => assert.fail('Playback failed'), { greetingCount: 3, onStart: () => {} });
     const first = player.request();
     player.request();
     if (mute) player.setMuted(true);
@@ -58,4 +58,23 @@ test('muting or dragging clears pending audio', () => {
     player.request();
     assert.equal(clips.reduce((sum, clip) => sum + clip.plays, 0), 2);
   }
+});
+
+test('emotions interrupt greetings and captions follow actual playback starts', () => {
+  const clips = [new Clip(), new Clip(), new Clip(), new Clip()];
+  const started: number[] = [];
+  const player = new VoicePlayer(clips, () => assert.fail('Playback failed'), {
+    greetingCount: 3, onStart: index => started.push(index)
+  });
+  const greeting = player.request();
+  player.request();
+  assert.deepEqual(started, [greeting]);
+  player.emote(3);
+  assert.deepEqual(started, [greeting, 3]);
+  clips[greeting].ended();
+  assert.equal(clips[3].plays, 1);
+  player.setMuted(true);
+  player.emote(3);
+  assert.deepEqual(started, [greeting, 3, 3]);
+  assert.equal(clips[3].plays, 1);
 });
