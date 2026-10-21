@@ -71,6 +71,52 @@ test('music motion stays still in silence and fades after sound stops', () => {
   assert.equal(value.energy, 0);
 });
 
+test('music deforms one seated pose with a fixed base and volume-dependent compression', () => {
+  for (const mode of ['system', 'song'] as const) {
+    let previous = motionTarget('idle', 0, 0, 0, 1, 0, undefined, mode);
+    let lowestScale = 1;
+    for (let i = 1; i <= 600; i++) {
+      const time = i / 60;
+      const next = motionTarget('idle', time, time, 0, 1, time * Math.PI * 4, i % 16, mode);
+      assert.equal(next.frame, 24);
+      assert.equal(next.x, 0); assert.equal(next.y, 0); assert.equal(next.angle, 0);
+      assert.ok(Math.abs(next.sy - previous.sy) < 0.09);
+      assert.ok(next.sx > 0 && next.sy > 0 && Math.abs(next.yaw) < 0.3);
+      lowestScale = Math.min(lowestScale, next.sy);
+      previous = next;
+    }
+    assert.ok(lowestScale < 0.55);
+    const quiet = motionTarget('idle', 0, 0, 0, 0, 1, undefined, mode);
+    assert.equal(quiet.frame, 24); assert.equal(quiet.y, 0);
+    assert.equal(quiet.sx, 1); assert.equal(quiet.sy, 1); assert.equal(quiet.yaw, 0);
+    assert.equal(motionTarget('dizzy', 0, 0, 0, 1, 1, undefined, mode).frame, 2);
+    const quietBeat = motionTarget('idle', 0, 0, 0, 0.15, 0, undefined, mode);
+    const loudBeat = motionTarget('idle', 0, 0, 0, 0.9, 0, undefined, mode);
+    assert.ok(loudBeat.sy < quietBeat.sy - 0.3 && loudBeat.sx > quietBeat.sx);
+  }
+});
+
+test('audio and deformation react to a volume attack within two display frames', () => {
+  const signal = new MusicSignal();
+  signal.update(0, 0, 1);
+  const value = signal.update(0.12, 0.8, 1 + 1 / 60);
+  assert.ok(value.energy > 0.5);
+  const smoother = new MotionSmoother();
+  const next = smoother.update(motionTarget('idle', 0, 0, 0, value.energy, 0, undefined, 'song'), 1 / 60, true);
+  assert.ok(next.sy < 0.81);
+  assert.equal(next.y, 0);
+});
+
+test('loud audio retains volume differences instead of clipping to a fixed amplitude', () => {
+  const levels = [0.01, 0.06, 0.18, 0.4].map(rms => {
+    const signal = new MusicSignal();
+    let energy = 0;
+    for (let i = 0; i < 60; i++) energy = signal.update(rms, rms, i / 60).energy;
+    return energy;
+  });
+  for (let i = 1; i < levels.length; i++) assert.ok(levels[i] > levels[i - 1] + 0.08);
+});
+
 test('petting needs deliberate gentle back-and-forth motion on the head', () => {
   const petting = new PettingTracker();
   let triggered = false;

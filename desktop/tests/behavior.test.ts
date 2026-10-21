@@ -83,6 +83,28 @@ test('jump includes its landing phase', () => {
   assert.equal(pet.mood, 'idle');
 });
 
+test('five minutes without attention sleeps and ordinary waking does not become angry', () => {
+  const pet = new PetBehavior();
+  pet.interact(20);
+  pet.autoSleep(319.9, false); assert.equal(pet.mood, 'idle');
+  pet.curious(320); pet.autoSleep(320, false); assert.equal(pet.mood, 'sleeping');
+  pet.toggleSleep(321); assert.equal(pet.mood, 'waking');
+  pet.update(322); assert.equal(pet.mood, 'idle');
+  pet.autoSleep(620, false); assert.equal(pet.mood, 'idle');
+  pet.autoSleep(621, false); assert.equal(pet.mood, 'sleeping');
+});
+
+test('attention, dragging and active music postpone automatic sleep', () => {
+  const pet = new PetBehavior();
+  pet.interact(290); pet.autoSleep(300, false); assert.equal(pet.mood, 'idle');
+  for (let time = 300; time <= 1200; time += 60) pet.autoSleep(time, true);
+  assert.equal(pet.mood, 'idle');
+  pet.autoSleep(1499, false); assert.equal(pet.mood, 'idle');
+  pet.beginDrag(1500); pet.autoSleep(1900, false); assert.equal(pet.mood, 'held');
+  pet.endDrag(1900); pet.update(1901); pet.autoSleep(1901, false);
+  assert.equal(pet.mood, 'idle');
+});
+
 test('continuous circles trigger in either direction', () => {
   for (const direction of [-1, 1]) {
     const orbit = new OrbitTracker();

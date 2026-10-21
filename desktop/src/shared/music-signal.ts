@@ -16,8 +16,8 @@ export class MusicSignal {
       this.lastBeat = time;
       this.phase += Math.atan2(Math.sin(-this.phase), Math.cos(-this.phase)) * 0.2;
     }
-    const target = rms < 0.003 ? 0 : Math.min(1, Math.sqrt(rms / 0.12));
-    this.energy += (target - this.energy) * (1 - Math.exp(-dt * (target > this.energy ? 12 : 5)));
+    const target = rms < 0.003 ? 0 : rms / (rms + 0.045);
+    this.energy += (target - this.energy) * (1 - Math.exp(-dt * (target > this.energy ? 90 : 15)));
     this.phase += dt / this.period * 2 * Math.PI;
     return { energy: this.energy < 0.015 ? 0 : this.energy, phase: this.phase % (2 * Math.PI) };
   }

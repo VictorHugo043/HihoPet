@@ -1,9 +1,10 @@
 import { Artwork } from './artwork.js';
+import { LocalSong } from './local-song.js';
 import { OrbitTracker, PetBehavior, PettingTracker, type Mood } from './shared/behavior.js';
 import { MotionSmoother, motionTarget } from './shared/motion.js';
 import { VoicePlayer } from './shared/voice.js';
 import { voiceCatalog, greetingCount, dizzyVoice, angryVoice } from './shared/voice-catalog.js';
-import type { PointerSample, Settings, MusicSample } from './bridge.js';
+import type { PointerSample, Settings, MusicSample, MusicMode } from './bridge.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#pet')!;
 const bubble = document.querySelector<HTMLDivElement>('#speech')!;
@@ -13,18 +14,21 @@ const behavior = new PetBehavior();
 const orbit = new OrbitTracker();
 const petting = new PettingTracker();
 const motion = new MotionSmoother();
+const localSong = new LocalSong(active => window.hiho.songState(active));
 const voices: HTMLAudioElement[] = [];
 let voicePlayer: VoicePlayer;
 let settings: Settings = { muted: false, scale: 1.5 };
 let pointer: PointerSample | undefined;
 let pointerMovedAt = 0, previousTime = 0, nextCuriosity = 12, pressedAt = -Infinity;
 let previousMood: Mood | undefined;
+let previousDescription = '';
 let hit = false, feedingVoiced = false;
 let down: { x: number; y: number; pointerId: number } | undefined;
 let suppressClickUntil = 0, pixelRatio = 1, speechUntil = 0, speechBeganAt = 0, suppressMusicUntil = 0;
 let chasingUntil = 0, gazeAngle = 0;
 let music: MusicSample = { active: false, energy: 0, phase: 0 };
 let musicReceivedAt = 0;
+let musicMode: MusicMode = 'system';
 
 const descriptions: Record<Mood, string> = {
   idle: '正在休息', greeting: '正在打招呼', delighted: '开心欢呼', jump: '正在跳跃', held: '被拎起来了',
@@ -42,6 +46,9 @@ function stopVoice(): void { voicePlayer?.stop(); }
 function greet(): void {
   const time = performance.now() / 1000;
   if (behavior.dragging || ['dizzy', 'waking'].includes(behavior.mood)) return;
+  if (behavior.mood === 'sleeping') {
+    behavior.toggleSleep(time); voicePlayer.emote(1); nextCuriosity = time + 18; return;
+  }
   const index = voicePlayer.request();
   behavior.tap(index, time, Math.min(2.6, Math.max(1.2, voices[index].duration + 0.25)));
   nextCuriosity = time + 18;
@@ -59,6 +66,7 @@ function finishDrag(): void {
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   pressedAt = performance.now() / 1000;
+  behavior.interact(pressedAt);
   down = { x: event.screenX, y: event.screenY, pointerId: event.pointerId };
   canvas.setPointerCapture(event.pointerId);
   window.hiho.prepareDrag();
@@ -82,7 +90,7 @@ canvas.addEventListener('click', event => {
   if (event.detail === 2) behavior.jump(performance.now() / 1000);
   else greet();
 });
-canvas.addEventListener('contextmenu', event => { event.preventDefault(); window.hiho.contextMenu(); });
+canvas.addEventListener('contextmenu', event => { event.preventDefault(); behavior.interact(performance.now() / 1000); window.hiho.contextMenu(); });
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Enter') { event.preventDefault(); greet(); }
   else if (event.key === ' ') { event.preventDefault(); behavior.jump(performance.now() / 1000); }
@@ -93,18 +101,20 @@ window.hiho.onPointer(sample => {
   if (!sample.moved) return;
   const time = performance.now() / 1000;
   pointerMovedAt = time;
+  const dx = (sample.localX - window.innerWidth / 2) / settings.scale;
+  const dy = (window.innerHeight - 24 - 100 * settings.scale - sample.localY) / settings.scale;
+  if (Math.hypot(dx, dy) < 140) behavior.interact(time);
   if (down || !['idle', 'curious', 'pout'].includes(behavior.mood)) return;
   const over = artwork.hit(sample.localX * pixelRatio, sample.localY * pixelRatio);
   if (petting.observe(sample.localX / settings.scale, sample.localY / settings.scale, time, over.head) && behavior.pet(time)) {
     orbit.reset(); voicePlayer.emote(2); return;
   }
   if (!['idle', 'curious'].includes(behavior.mood)) return;
-  const dx = (sample.localX - window.innerWidth / 2) / settings.scale;
-  const dy = (window.innerHeight - 24 - 100 * settings.scale - sample.localY) / settings.scale;
   if (orbit.observe(dx, dy, time)) behavior.becomeDizzy(time);
 });
 window.hiho.onAction(action => {
   const time = performance.now() / 1000;
+  if (action.type !== 'music') behavior.interact(time);
   if (action.type === 'dance') behavior.dance(time);
   else if (action.type === 'sleep') { stopVoice(); orbit.reset(); behavior.toggleSleep(time); }
   else if (action.type === 'feed') {
@@ -113,8 +123,16 @@ window.hiho.onAction(action => {
     chasingUntil = action.active ? time + 15 : 0;
     if (!action.active && behavior.mood === 'chasing') behavior.start('idle', time);
     if (action.active) say('一起玩，ho！', 1.5);
-  } else if (action.type === 'music') { music = action.sample; musicReceivedAt = time; }
-  else if (action.type === 'settings') { settings = action.settings; voicePlayer?.setMuted(settings.muted); }
+  } else if (action.type === 'song') {
+    if (behavior.mood === 'sleeping') behavior.toggleSleep(time);
+    void localSong.play(action.audio).catch(() => say('这个音频暂时播不了，ho…', 2));
+  } else if (action.type === 'stopSong') localSong.stop();
+  else if (action.type === 'music') {
+    if (action.sample.active && !music.active && behavior.mood === 'sleeping') behavior.toggleSleep(time);
+    music = action.sample; musicMode = action.mode; musicReceivedAt = time;
+  } else if (action.type === 'settings') {
+    settings = action.settings; voicePlayer?.setMuted(settings.muted); localSong.setMuted(settings.muted);
+  }
 });
 function resizeCanvas(): void {
   pixelRatio = Math.min(2, window.devicePixelRatio || 1);
@@ -158,8 +176,12 @@ function animate(milliseconds: number): void {
   const dt = previousTime ? Math.min(1 / 20, Math.max(1 / 240, time - previousTime)) : 1 / 60;
   previousTime = time;
   behavior.update(time);
+  const localSample = localSong.sample(time);
+  const sample = localSample.active ? localSample : music;
+  const listening = localSample.active || (music.active && time - musicReceivedAt < 0.5);
+  behavior.autoSleep(time, listening);
   if (behavior.mood === 'idle' && time < chasingUntil) behavior.start('chasing', time, chasingUntil - time);
-  if (behavior.mood === 'idle' && time > nextCuriosity && time - pointerMovedAt > 2.3 && music.energy < 0.02) {
+  if (behavior.mood === 'idle' && time > nextCuriosity && time - pointerMovedAt > 2.3 && !listening) {
     behavior.curious(time); nextCuriosity = time + 15 + Math.random() * 10;
   }
   if (previousMood !== behavior.mood) {
@@ -167,15 +189,19 @@ function animate(milliseconds: number): void {
     if (behavior.mood === 'dizzy') voicePlayer.emote(dizzyVoice);
     else if (behavior.mood === 'angry') voicePlayer.emote(angryVoice);
     else if (behavior.mood === 'sleeping') say('Zzz…', 2);
-    canvas.setAttribute('aria-label', `Hiho：${descriptions[behavior.mood]}。单击打招呼，双击跳跃，轻抚头部或右键更多互动`);
     window.hiho.mood(behavior.mood === 'sleeping', ['idle', 'chasing'].includes(behavior.mood));
     previousMood = behavior.mood;
+  }
+  const description = listening && ['idle', 'curious'].includes(behavior.mood) ? '坐着随音量 Q 弹伸缩' : descriptions[behavior.mood];
+  if (description !== previousDescription) {
+    canvas.setAttribute('aria-label', `Hiho：${description}。单击打招呼，双击跳跃，轻抚头部或右键更多互动`);
+    previousDescription = description;
   }
   const t = Math.max(0, time - behavior.beganAt);
   if (behavior.mood === 'feeding' && t > 1.3 && !feedingVoiced) { feedingVoiced = true; voicePlayer.emote(2); }
   const gazeX = pointer && time - pointerMovedAt < 2.3 ? (pointer.localX - window.innerWidth / 2) / settings.scale : 0;
   const gazeY = pointer && time - pointerMovedAt < 2.3 ? (window.innerHeight - 24 - 100 * settings.scale - pointer.localY) / settings.scale : 0;
-  const energy = music.active && time - musicReceivedAt < 0.5 && time > suppressMusicUntil && ['idle', 'curious'].includes(behavior.mood) ? music.energy : 0;
+  const energy = listening && (localSample.active || time > suppressMusicUntil) && ['idle', 'curious'].includes(behavior.mood) ? sample.energy : 0;
   let look: number | undefined;
   if (pointer && time - pointerMovedAt < 2.3 && Math.hypot(gazeX, gazeY) > 20 && Math.hypot(gazeX, gazeY) < 360 && ['idle', 'curious'].includes(behavior.mood)) {
     const desired = Math.atan2(gazeX, gazeY);
@@ -183,16 +209,18 @@ function animate(milliseconds: number): void {
     gazeAngle += delta * (1 - Math.exp(-dt * 14));
     look = (Math.round(gazeAngle / (2 * Math.PI) * 16) + 16) % 16;
   }
-  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, music.phase, look);
+  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, listening ? (localSample.active ? 'song' : musicMode) : undefined);
   if (behavior.mood === 'held' && behavior.shakeLevel >= 1) target.frame = 2;
   const press = time - pressedAt;
   if (press >= 0 && press < 0.18 && !behavior.dragging) { const squeeze = Math.sin(press / 0.18 * Math.PI) * 0.04; target.sx += squeeze; target.sy -= squeeze; }
-  const pose = motion.update(target, dt);
+  const pose = motion.update(target, dt, listening && ['idle', 'curious'].includes(behavior.mood));
   if (Math.min(2, window.devicePixelRatio || 1) !== pixelRatio) resizeCanvas();
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, window.innerWidth, window.innerHeight);
   context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high';
-  context.translate(window.innerWidth / 2 + pose.x * settings.scale, window.innerHeight - 24 - pose.y * settings.scale);
+  // Scale around the opaque seated base, so compression cannot lift the contact point.
+  const seatedOffset = pose.frame === 24 ? 6 * (pose.sy - 1) : 0;
+  context.translate(window.innerWidth / 2 + pose.x * settings.scale, window.innerHeight - 24 - (pose.y - seatedOffset) * settings.scale);
   context.scale(settings.scale * pose.sx, settings.scale * pose.sy); context.rotate(pose.angle);
   artwork.draw(context, pose, time);
   if (behavior.mood === 'feeding') snowball(t);
@@ -213,13 +241,13 @@ async function boot(): Promise<void> {
     audio.addEventListener('loadedmetadata', () => resolve(), { once: true });
     audio.addEventListener('error', () => reject(new Error('Missing voice')), { once: true }); audio.load();
   }))]);
-  settings = await window.hiho.ready();
+  settings = await window.hiho.ready(); behavior.interact(performance.now() / 1000);
   voicePlayer = new VoicePlayer(voices, () => say('声音暂时没准备好，ho…', 2), { greetingCount, onStart: index => {
     const duration = voices[index].duration;
     say(voiceCatalog[index].text, duration + 0.45);
     suppressMusicUntil = performance.now() / 1000 + duration + 0.4;
   } });
-  voicePlayer.setMuted(settings.muted); resizeCanvas(); nextCuriosity = performance.now() / 1000 + 12;
+  voicePlayer.setMuted(settings.muted); localSong.setMuted(settings.muted); resizeCanvas(); nextCuriosity = performance.now() / 1000 + 12;
   requestAnimationFrame(animate);
 }
 boot().catch(() => window.hiho.fatal());

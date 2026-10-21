@@ -11,6 +11,7 @@ const bridge: PetBridge = {
   mood: (sleeping, canChase) => ipcRenderer.send('hiho:mood', sleeping, canChase),
   authorizeMusic: () => ipcRenderer.invoke('hiho:authorize-music'),
   music: sample => ipcRenderer.send('hiho:music', sample),
+  songState: active => ipcRenderer.send('hiho:song-state', active),
   fatal: () => ipcRenderer.send('hiho:fatal'),
   onPointer: callback => ipcRenderer.on('hiho:pointer', (_event, sample: PointerSample) => callback(sample)),
   onAction: callback => ipcRenderer.on('hiho:action', (_event, action: MenuAction) => callback(action))

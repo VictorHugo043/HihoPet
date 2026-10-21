@@ -15,6 +15,17 @@ export class PetBehavior {
   private dragPeak = { x: 0, y: 0 };
   private dragDirection = { x: 0, y: 0 };
   private strokeAt = 0;
+  private lastInteraction = 0;
+
+  interact(time: number): void { this.lastInteraction = time; }
+
+  autoSleep(time: number, musicActive: boolean): void {
+    if (this.dragging || musicActive) { this.interact(time); return; }
+    if (['idle', 'curious'].includes(this.mood) && time - this.lastInteraction >= 300) {
+      this.grumpyWake = false;
+      this.start('sleeping', time);
+    }
+  }
 
   start(mood: Mood, time: number, duration = Infinity): void {
     this.mood = mood;
@@ -25,6 +36,7 @@ export class PetBehavior {
   tap(variant: number, time: number, duration: number): boolean {
     if (this.dragging || ['dizzy', 'waking'].includes(this.mood)) return false;
     this.greetingVariant = variant;
+    this.interact(time);
     this.grumpyWake = false;
     this.start(variant % 3 === 1 ? 'delighted' : 'greeting', time, duration);
     return true;
@@ -33,10 +45,12 @@ export class PetBehavior {
   jump(time: number): void {
     if (this.dragging || ['dizzy', 'waking'].includes(this.mood)) return;
     this.grumpyWake = false;
+    this.interact(time);
     this.start('jump', time, 0.9);
   }
 
   beginDrag(time: number, x = 0, y = 0): void {
+    this.interact(time);
     this.dragging = true;
     this.shaken = false;
     this.shakeLevel = 0;
@@ -79,6 +93,7 @@ export class PetBehavior {
   endDrag(time: number): void {
     if (!this.dragging) return;
     this.dragging = false;
+    this.interact(time);
     if (this.shaken) this.becomeDizzy(time);
     else this.start('landing', time, 0.55);
   }
@@ -92,12 +107,14 @@ export class PetBehavior {
   toggleSleep(time: number): void {
     if (this.dragging) return;
     this.grumpyWake = false;
+    this.interact(time);
     this.start(this.mood === 'sleeping' ? 'waking' : 'sleeping', time, this.mood === 'sleeping' ? 0.9 : Infinity);
   }
 
   dance(time: number): void {
     if (this.dragging) return;
     this.grumpyWake = false;
+    this.interact(time);
     this.start('dance', time, 7.5);
   }
 
@@ -107,13 +124,13 @@ export class PetBehavior {
 
   pet(time: number): boolean {
     if (!['idle', 'curious', 'pout'].includes(this.mood) || this.dragging) return false;
-    this.start('petted', time, 2.4);
+    this.interact(time); this.start('petted', time, 2.4);
     return true;
   }
 
   feed(time: number): boolean {
     if (this.dragging || ['dizzy', 'waking', 'sleeping'].includes(this.mood)) return false;
-    this.start('feeding', time, 3.2);
+    this.interact(time); this.start('feeding', time, 3.2);
     return true;
   }
 

@@ -27,7 +27,7 @@ button.addEventListener('click', async () => {
     if (!capture.getAudioTracks().length) { capture.getTracks().forEach(track => track.stop()); throw new Error('No system audio'); }
     stream = capture;
     context = new AudioContext(); await context.resume();
-    const analyser = context.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.55;
+    const analyser = context.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.05;
     context.createMediaStreamSource(capture).connect(analyser);
     const wave = new Float32Array(analyser.fftSize), spectrum = new Uint8Array(analyser.frequencyBinCount);
     const signal = new MusicSignal();
@@ -38,7 +38,7 @@ button.addEventListener('click', async () => {
       for (let i = 1; i <= bins; i++) bass += spectrum[i] / 255;
       const value = signal.update(Math.sqrt(square / wave.length), bass / bins, performance.now() / 1000);
       window.hiho.music({ active: true, ...value });
-    }, 1000 / 30);
+    }, 1000 / 60);
     capture.getAudioTracks()[0].addEventListener('ended', () => { stop(); button.disabled = false; status.textContent = '聆听已结束，随时可以再来一首。'; });
     window.hiho.music({ active: true, energy: 0, phase: 0 });
     status.textContent = '正在聆听系统音乐。右键 Hiho 可停止。';
@@ -47,5 +47,4 @@ button.addEventListener('click', async () => {
     status.textContent = '暂时没能取得系统音频。请在系统设置的“隐私与安全性”中允许 Hiho 录制系统音频，再重试。';
   }
 });
-window.hiho.onAction(action => { if (action.type === 'stopMusic') { stop(); window.close(); } });
 window.addEventListener('beforeunload', stop);

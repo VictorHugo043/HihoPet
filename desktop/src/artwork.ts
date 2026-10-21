@@ -4,6 +4,7 @@ const vertexShader = `#version 300 es
 in vec2 position;
 out vec2 uv;
 uniform float headAngle;
+uniform float yaw;
 uniform vec2 arms;
 uniform vec2 legs;
 uniform vec2 lifts;
@@ -26,6 +27,13 @@ void main() {
   float rightLeg = legY * smoothstep(188.0, 200.0, position.x);
   p = mix(p, turn(p, vec2(155.0, 340.0), legs.x) + vec2(0.0, lifts.x * 2.0), leftLeg);
   p = mix(p, turn(p, vec2(204.0, 340.0), legs.y) + vec2(0.0, lifts.y * 2.0), rightLeg);
+  float seatedBase = 1.0 - smoothstep(330.0, 395.0, position.y);
+  float turnAngle = yaw * seatedBase;
+  vec2 q = p - vec2(192.0, 404.0);
+  float depth = 30.0 * sqrt(max(0.0, 1.0 - pow(q.x / 192.0, 2.0))) * abs(sin(turnAngle));
+  float z = -sin(turnAngle) * q.x + cos(turnAngle) * depth;
+  float perspective = 650.0 / (650.0 - z);
+  p = vec2((cos(turnAngle) * q.x + sin(turnAngle) * depth) * perspective, q.y * perspective) + vec2(192.0, 404.0);
   gl_Position = vec4(p.x / 192.0 - 1.0, 1.0 - p.y / 208.0, 0.0, 1.0);
 }`;
 const fragmentShader = `#version 300 es
@@ -33,13 +41,17 @@ precision mediump float;
 in vec2 uv;
 out vec4 color;
 uniform sampler2D atlas;
+uniform sampler2D seated;
 uniform vec2 currentCell;
 uniform vec2 previousCell;
 uniform float blend;
+vec4 samplePose(vec2 cell) {
+  if (cell.y >= 6.0) return texture(seated, uv);
+  return texture(atlas, (cell + uv) / vec2(4.0, 6.0));
+}
 void main() {
-  vec2 grid = vec2(4.0, 6.0);
-  vec4 current = texture(atlas, (currentCell + uv) / grid);
-  vec4 previous = texture(atlas, (previousCell + uv) / grid);
+  vec4 current = samplePose(currentCell);
+  vec4 previous = samplePose(previousCell);
   color = mix(previous, current, blend);
 }`;
 
@@ -71,7 +83,7 @@ export class Artwork {
     gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentShader)); gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Character shader unavailable');
     this.program = program; gl.useProgram(program);
-    for (const name of ['headAngle', 'arms', 'legs', 'lifts', 'currentCell', 'previousCell', 'blend']) this.uniforms.set(name, gl.getUniformLocation(program, name));
+    for (const name of ['headAngle', 'yaw', 'arms', 'legs', 'lifts', 'currentCell', 'previousCell', 'blend']) this.uniforms.set(name, gl.getUniformLocation(program, name));
     const vertices: number[] = [], indices: number[] = [];
     for (let y = 0; y <= 26; y++) for (let x = 0; x <= 24; x++) vertices.push(x * 16, y * 16);
     for (let y = 0; y < 26; y++) for (let x = 0; x < 24; x++) {
@@ -80,12 +92,16 @@ export class Artwork {
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
     const position = gl.getAttribLocation(program, 'position'); gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW); this.indexCount = indices.length;
-    const image = new Image(); image.src = new URL('assets/character.png', import.meta.url).href; await image.decode();
-    if (image.width !== 1536 || image.height !== 2496) throw new Error('Invalid character artwork');
-    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture()); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    for (const [unit, name, width, height] of [[0, 'character', 1536, 2496], [1, 'seated', 384, 416]] as const) {
+      const image = new Image(); image.src = new URL(`assets/${name}.png`, import.meta.url).href; await image.decode();
+      if (image.width !== width || image.height !== height) throw new Error('Invalid character artwork');
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture()); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(gl.getUniformLocation(program, unit ? 'seated' : 'atlas'), unit);
+    }
     gl.clearColor(0, 0, 0, 0);
   }
 
@@ -94,12 +110,13 @@ export class Artwork {
     const gl = this.gl;
     const location = (name: string): WebGLUniformLocation | null => this.uniforms.get(name)!;
     gl.uniform1f(location('headAngle'), pose.headAngle);
+    gl.uniform1f(location('yaw'), pose.yaw);
     gl.uniform2f(location('arms'), pose.armLeft, pose.armRight);
     gl.uniform2f(location('legs'), pose.legLeft, pose.legRight);
     gl.uniform2f(location('lifts'), pose.liftLeft, pose.liftRight);
     gl.uniform2f(location('currentCell'), this.frame % 4, Math.floor(this.frame / 4));
     gl.uniform2f(location('previousCell'), this.previousFrame % 4, Math.floor(this.previousFrame / 4));
-    gl.uniform1f(location('blend'), Math.min(1, (time - this.changedAt) / 0.16));
+    gl.uniform1f(location('blend'), Math.min(1, (time - this.changedAt) / (this.frame === 6 ? 0.65 : 0.16)));
     gl.clear(gl.COLOR_BUFFER_BIT); gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
     this.inverse = context.getTransform().inverse();
     context.drawImage(this.canvas, -96, -208, 192, 208);

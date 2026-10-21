@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, session, Tray, dialog, type MenuItemConstructorOptions } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { MenuAction, PointerSample, Settings, MusicSample } from './bridge.js';
+import type { MenuAction, PointerSample, Settings, MusicSample, MusicMode } from './bridge.js';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 let window: BrowserWindow | undefined;
@@ -14,6 +15,8 @@ let chasingUntil = 0;
 let chasePosition: { x: number; y: number } | undefined;
 let musicWindow: BrowserWindow | undefined;
 let musicActive = false;
+let musicMode: MusicMode = 'system';
+let lastMusicSample: MusicSample = { active: false, energy: 0, phase: 0 };
 let captureAllowedUntil = 0;
 let dragging = false;
 let opaque = false;
@@ -56,26 +59,43 @@ function stopChasing(): void {
   save();
 }
 
-function toggleMusic(): void {
-  if (musicActive) {
-    musicWindow?.webContents.send('hiho:action', { type: 'stopMusic' });
-    musicActive = false;
-    send({ type: 'music', sample: { active: false, energy: 0, phase: 0 } });
-    return;
+function stopMusic(): void {
+  const control = musicWindow; musicWindow = undefined;
+  musicActive = false; captureAllowedUntil = 0;
+  lastMusicSample = { active: false, energy: 0, phase: 0 };
+  control?.destroy();
+  send({ type: 'stopSong' });
+  send({ type: 'music', sample: lastMusicSample, mode: musicMode });
+}
+
+async function toggleSong(): Promise<void> {
+  if (musicActive && musicMode === 'song') { stopMusic(); return; }
+  const selection = await dialog.showOpenDialog({ title: '⚡️‌HIHOの酒⚡️‌ · 选择本地音频',
+    properties: ['openFile'], filters: [{ name: '音频', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac'] }] });
+  if (selection.canceled || !selection.filePaths.length) return;
+  try {
+    const audio = await readFile(selection.filePaths[0]);
+    stopMusic(); musicMode = 'song'; musicActive = true;
+    send({ type: 'song', audio: new Uint8Array(audio) });
+  } catch {
+    dialog.showErrorBox('音频无法打开', '请选择仍在本机磁盘上、可读取的音频文件。');
   }
+}
+
+function toggleMusic(): void {
+  if (musicActive && musicMode === 'system') { stopMusic(); return; }
   if (musicWindow && !musicWindow.isDestroyed()) { musicWindow.show(); musicWindow.focus(); return; }
-  musicWindow = new BrowserWindow({ width: 380, height: 340, title: '跟着音乐动 · Hiho',
+  stopMusic(); musicMode = 'system';
+  const control = new BrowserWindow({ width: 380, height: 390, title: '跟着音乐动 · Hiho',
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     backgroundColor: '#f6faff', webPreferences: { preload: join(directory, 'preload.cjs'),
       nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
-  musicWindow.setMenuBarVisibility(false);
-  musicWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  musicWindow.webContents.on('will-navigate', event => event.preventDefault());
-  musicWindow.loadFile(join(directory, 'music.html'));
-  musicWindow.on('closed', () => {
-    musicWindow = undefined; musicActive = false; captureAllowedUntil = 0;
-    send({ type: 'music', sample: { active: false, energy: 0, phase: 0 } });
-  });
+  musicWindow = control;
+  control.setMenuBarVisibility(false);
+  control.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  control.webContents.on('will-navigate', event => event.preventDefault());
+  control.loadFile(join(directory, 'music.html'));
+  control.on('closed', () => { if (musicWindow === control) stopMusic(); });
 }
 
 function setScale(scale: number): void {
@@ -100,7 +120,8 @@ function menu(): Menu {
       if (chasingUntil) stopChasing();
       else { chasingUntil = performance.now() / 1000 + 15; chasePosition = undefined; send({ type: 'chase', active: true }); }
     } },
-    { label: musicActive ? '停止跟随音乐' : '跟着音乐动', click: toggleMusic },
+    { label: musicActive && musicMode === 'system' ? '停止跟随音乐' : '跟着音乐动', click: toggleMusic },
+    { label: musicActive && musicMode === 'song' ? '停止 ⚡️‌HIHOの酒⚡️‌' : '⚡️‌HIHOの酒⚡️‌', click: () => { void toggleSong(); } },
     { label: sleeping ? '轻轻叫醒' : '睡个小觉', click: () => send({ type: 'sleep' }) },
     { label: '安静模式', type: 'checkbox', checked: settings.muted, click: item => {
       settings.muted = item.checked;
@@ -248,9 +269,14 @@ else {
   ipcMain.on('hiho:music', (event, value: MusicSample) => {
     if (event.sender !== musicWindow?.webContents || !value || typeof value.active !== 'boolean' ||
         !Number.isFinite(value.energy) || !Number.isFinite(value.phase)) return;
-    if (value.active && !musicActive) musicWindow?.hide();
+    const began = value.active && !musicActive;
     musicActive = value.active;
-    send({ type: 'music', sample: { active: musicActive, energy: Math.max(0, Math.min(1, value.energy)), phase: value.phase } });
+    lastMusicSample = { active: musicActive, energy: Math.max(0, Math.min(1, value.energy)), phase: value.phase };
+    send({ type: 'music', sample: lastMusicSample, mode: musicMode });
+    if (began) musicWindow?.hide();
+  });
+  ipcMain.on('hiho:song-state', (event, active) => {
+    if (event.sender === window?.webContents && typeof active === 'boolean' && musicMode === 'song') musicActive = active;
   });
   ipcMain.on('hiho:fatal', event => {
     if (event.sender !== window?.webContents) return;

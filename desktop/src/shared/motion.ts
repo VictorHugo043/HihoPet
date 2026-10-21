@@ -1,16 +1,17 @@
 import type { Mood } from './behavior.js';
+import type { MusicMode } from '../bridge.js';
 
 export interface MotionPose {
   x: number; y: number; angle: number; sx: number; sy: number;
-  frame: number; headAngle: number;
+  frame: number; headAngle: number; yaw: number;
   armLeft: number; armRight: number; legLeft: number; legRight: number;
   liftLeft: number; liftRight: number;
 }
 
-export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelocity = 0, musicEnergy = 0, musicPhase = 0, look?: number): MotionPose {
+export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelocity = 0, musicEnergy = 0, musicPhase = 0, look?: number, musicMode?: MusicMode): MotionPose {
   const p: MotionPose = { x: 0, y: Math.sin(time * 1.8) * 0.35, angle: Math.sin(time * 1.1) * 0.004,
     sx: 1 + Math.sin(time * 1.8) * 0.005, sy: 1 - Math.sin(time * 1.8) * 0.004,
-    frame: look === undefined ? 0 : 8 + look, headAngle: 0,
+    frame: look === undefined ? 0 : 8 + look, headAngle: 0, yaw: 0,
     armLeft: 0, armRight: 0, legLeft: 0, legRight: 0, liftLeft: 0, liftRight: 0 };
   const t = elapsed;
   if (mood === 'greeting' || mood === 'delighted') {
@@ -18,7 +19,20 @@ export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelo
     p.armLeft = 0.35 + Math.sin(t * 8) * 0.09;
     p.headAngle = Math.sin(t * 4) * 0.035;
     p.y = (1 - Math.cos(t * 7)) * (mood === 'delighted' ? 2.5 : 0.7);
-  } else if (mood === 'dance' || (['idle', 'curious'].includes(mood) && musicEnergy > 0.02)) {
+  } else if (['idle', 'curious'].includes(mood) && musicMode) {
+    const intensity = Math.max(0, Math.min(1, musicEnergy));
+    const flight = Math.sin(musicPhase / 2) ** 2;
+    const impact = Math.exp(-flight * 8);
+    p.frame = 24;
+    p.y = 0;
+    p.sy = 1 + (flight * 0.10 - 0.15 - impact * 0.31) * intensity;
+    p.sx = p.sy ** -0.7;
+    p.angle = 0;
+    p.headAngle = Math.sin(musicPhase - 0.4) * 0.022 * intensity;
+    p.armLeft = Math.sin(musicPhase - 0.5) * 0.035 * intensity;
+    p.armRight = -p.armLeft;
+    if (musicMode === 'song') p.yaw = (Math.sin(time * 1.4) * 0.24 + Math.sin(musicPhase) * 0.055) * intensity;
+  } else if (mood === 'dance') {
     const phase = musicEnergy > 0 ? musicPhase : t * 5.2;
     const intensity = musicEnergy > 0 ? musicEnergy : 0.65;
     const sway = Math.sin(phase);
@@ -66,8 +80,8 @@ export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelo
 
 export class MotionSmoother {
   private pose = motionTarget('idle', 0, 0);
-  update(target: MotionPose, dt: number): MotionPose {
-    const blend = 1 - Math.exp(-Math.min(0.05, dt) * 22);
+  update(target: MotionPose, dt: number, music = false): MotionPose {
+    const blend = 1 - Math.exp(-Math.min(0.05, dt) * (music ? 90 : 22));
     for (const key of Object.keys(this.pose) as (keyof MotionPose)[]) {
       if (key === 'frame') this.pose.frame = target.frame;
       else this.pose[key] += (target[key] - this.pose[key]) * blend;
