@@ -1,6 +1,6 @@
 export type Settings = { muted: boolean; scale: number };
 export type PointerSample = { x: number; y: number; localX: number; localY: number; vx: number; vy: number; moved: boolean };
-export type MusicSample = { active: boolean; energy: number; phase: number };
+export type MusicSample = { active: boolean; energy: number; phase: number; pulse: number };
 export type MusicMode = 'system' | 'song';
 export type MenuAction = { type: 'dance' | 'sleep' | 'feed' | 'stopSong' } | { type: 'settings'; settings: Settings } |
   { type: 'chase'; active: boolean } | { type: 'music'; sample: MusicSample; mode: MusicMode } |

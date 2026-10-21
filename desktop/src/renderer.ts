@@ -26,7 +26,7 @@ let hit = false, feedingVoiced = false;
 let down: { x: number; y: number; pointerId: number } | undefined;
 let suppressClickUntil = 0, pixelRatio = 1, speechUntil = 0, speechBeganAt = 0, suppressMusicUntil = 0;
 let chasingUntil = 0, gazeAngle = 0;
-let music: MusicSample = { active: false, energy: 0, phase: 0 };
+let music: MusicSample = { active: false, energy: 0, phase: 0, pulse: 0 };
 let musicReceivedAt = 0;
 let musicMode: MusicMode = 'system';
 
@@ -209,7 +209,7 @@ function animate(milliseconds: number): void {
     gazeAngle += delta * (1 - Math.exp(-dt * 14));
     look = (Math.round(gazeAngle / (2 * Math.PI) * 16) + 16) % 16;
   }
-  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, listening ? (localSample.active ? 'song' : musicMode) : undefined);
+  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, listening ? (localSample.active ? 'song' : musicMode) : undefined, sample.pulse);
   if (behavior.mood === 'held' && behavior.shakeLevel >= 1) target.frame = 2;
   const press = time - pressedAt;
   if (press >= 0 && press < 0.18 && !behavior.dragging) { const squeeze = Math.sin(press / 0.18 * Math.PI) * 0.04; target.sx += squeeze; target.sy -= squeeze; }

@@ -8,7 +8,7 @@ export interface MotionPose {
   liftLeft: number; liftRight: number;
 }
 
-export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelocity = 0, musicEnergy = 0, musicPhase = 0, look?: number, musicMode?: MusicMode): MotionPose {
+export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelocity = 0, musicEnergy = 0, musicPhase = 0, look?: number, musicMode?: MusicMode, musicPulse = 0): MotionPose {
   const p: MotionPose = { x: 0, y: Math.sin(time * 1.8) * 0.35, angle: Math.sin(time * 1.1) * 0.004,
     sx: 1 + Math.sin(time * 1.8) * 0.005, sy: 1 - Math.sin(time * 1.8) * 0.004,
     frame: look === undefined ? 0 : 8 + look, headAngle: 0, yaw: 0,
@@ -21,12 +21,10 @@ export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelo
     p.y = (1 - Math.cos(t * 7)) * (mood === 'delighted' ? 2.5 : 0.7);
   } else if (['idle', 'curious'].includes(mood) && musicMode) {
     const intensity = Math.max(0, Math.min(1, musicEnergy));
-    const flight = Math.sin(musicPhase / 2) ** 2;
-    const impact = Math.exp(-flight * 8);
     p.frame = 24;
     p.y = 0;
-    p.sy = 1 + (flight * 0.10 - 0.15 - impact * 0.31) * intensity;
-    p.sx = p.sy ** -0.7;
+    p.sy = Math.max(0.5, Math.min(1.14, 1 - (0.025 + 0.48 * musicPulse) * intensity));
+    p.sx = Math.min(1.58, p.sy ** -0.7);
     p.angle = 0;
     p.headAngle = Math.sin(musicPhase - 0.4) * 0.022 * intensity;
     p.armLeft = Math.sin(musicPhase - 0.5) * 0.035 * intensity;

@@ -8,6 +8,8 @@ uniform float yaw;
 uniform vec2 arms;
 uniform vec2 legs;
 uniform vec2 lifts;
+uniform mat3 world;
+uniform vec2 viewport;
 vec2 turn(vec2 p, vec2 pivot, float angle) {
   vec2 q = p - pivot;
   return pivot + mat2(cos(angle), sin(angle), -sin(angle), cos(angle)) * q;
@@ -34,7 +36,8 @@ void main() {
   float z = -sin(turnAngle) * q.x + cos(turnAngle) * depth;
   float perspective = 650.0 / (650.0 - z);
   p = vec2((cos(turnAngle) * q.x + sin(turnAngle) * depth) * perspective, q.y * perspective) + vec2(192.0, 404.0);
-  gl_Position = vec4(p.x / 192.0 - 1.0, 1.0 - p.y / 208.0, 0.0, 1.0);
+  vec2 pixel = (world * vec3(p / 2.0 - vec2(96.0, 208.0), 1.0)).xy;
+  gl_Position = vec4(pixel.x / viewport.x * 2.0 - 1.0, 1.0 - pixel.y / viewport.y * 2.0, 0.0, 1.0);
 }`;
 const fragmentShader = `#version 300 es
 precision mediump float;
@@ -57,7 +60,7 @@ void main() {
 
 /** One connected mesh keeps the original neck pixels intact through every deformation. */
 export class Artwork {
-  private canvas = document.createElement('canvas');
+  private canvas = document.querySelector<HTMLCanvasElement>('#character')!;
   private gl!: WebGL2RenderingContext;
   private program!: WebGLProgram;
   private indexCount = 0;
@@ -67,6 +70,7 @@ export class Artwork {
   private inverse = new DOMMatrix();
   private pixel = new Uint8Array(4);
   private uniforms = new Map<string, WebGLUniformLocation | null>();
+  private world = new Float32Array(9);
 
   async load(): Promise<void> {
     this.canvas.width = 384; this.canvas.height = 416;
@@ -83,7 +87,7 @@ export class Artwork {
     gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentShader)); gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Character shader unavailable');
     this.program = program; gl.useProgram(program);
-    for (const name of ['headAngle', 'yaw', 'arms', 'legs', 'lifts', 'currentCell', 'previousCell', 'blend']) this.uniforms.set(name, gl.getUniformLocation(program, name));
+    for (const name of ['headAngle', 'yaw', 'arms', 'legs', 'lifts', 'currentCell', 'previousCell', 'blend', 'world', 'viewport']) this.uniforms.set(name, gl.getUniformLocation(program, name));
     const vertices: number[] = [], indices: number[] = [];
     for (let y = 0; y <= 26; y++) for (let x = 0; x <= 24; x++) vertices.push(x * 16, y * 16);
     for (let y = 0; y < 26; y++) for (let x = 0; x < 24; x++) {
@@ -108,7 +112,15 @@ export class Artwork {
   draw(context: CanvasRenderingContext2D, pose: MotionPose, time: number): void {
     if (pose.frame !== this.frame) { this.previousFrame = this.frame; this.frame = pose.frame; this.changedAt = time; }
     const gl = this.gl;
+    if (this.canvas.width !== context.canvas.width || this.canvas.height !== context.canvas.height) {
+      this.canvas.width = context.canvas.width; this.canvas.height = context.canvas.height;
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    }
     const location = (name: string): WebGLUniformLocation | null => this.uniforms.get(name)!;
+    const transform = context.getTransform();
+    this.world.set([transform.a, transform.b, 0, transform.c, transform.d, 0, transform.e, transform.f, 1]);
+    gl.uniformMatrix3fv(location('world'), false, this.world);
+    gl.uniform2f(location('viewport'), this.canvas.width, this.canvas.height);
     gl.uniform1f(location('headAngle'), pose.headAngle);
     gl.uniform1f(location('yaw'), pose.yaw);
     gl.uniform2f(location('arms'), pose.armLeft, pose.armRight);
@@ -118,15 +130,15 @@ export class Artwork {
     gl.uniform2f(location('previousCell'), this.previousFrame % 4, Math.floor(this.previousFrame / 4));
     gl.uniform1f(location('blend'), Math.min(1, (time - this.changedAt) / (this.frame === 6 ? 0.65 : 0.16)));
     gl.clear(gl.COLOR_BUFFER_BIT); gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
-    this.inverse = context.getTransform().inverse();
-    context.drawImage(this.canvas, -96, -208, 192, 208);
+    this.inverse = transform.inverse();
   }
 
   hit(x: number, y: number): { opaque: boolean; head: boolean } {
+    if (x < 0 || y < 0 || x >= this.canvas.width || y >= this.canvas.height) return { opaque: false, head: false };
     const point = this.inverse.transformPoint(new DOMPoint(x, y));
     const px = Math.floor((point.x + 96) * 2), py = Math.floor((point.y + 208) * 2);
     if (px < 0 || px >= 384 || py < 0 || py >= 416) return { opaque: false, head: false };
-    this.gl.readPixels(px, 415 - py, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, this.pixel);
+    this.gl.readPixels(Math.floor(x), this.canvas.height - 1 - Math.floor(y), 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, this.pixel);
     return { opaque: this.pixel[3] > 28, head: this.pixel[3] > 28 && py < 290 };
   }
 }

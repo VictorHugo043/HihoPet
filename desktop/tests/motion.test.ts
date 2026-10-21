@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { motionTarget, MotionSmoother } from '../src/shared/motion.js';
 import { MusicSignal } from '../src/shared/music-signal.js';
+import { beatPulse } from '../src/shared/music-track.js';
 import { PetBehavior, PettingTracker } from '../src/shared/behavior.js';
 
 test('dance and dizziness keep a stable expression and small continuous motion', () => {
@@ -73,14 +74,15 @@ test('music motion stays still in silence and fades after sound stops', () => {
 
 test('music deforms one seated pose with a fixed base and volume-dependent compression', () => {
   for (const mode of ['system', 'song'] as const) {
-    let previous = motionTarget('idle', 0, 0, 0, 1, 0, undefined, mode);
+    let previous = motionTarget('idle', 0, 0, 0, 1, 0, undefined, mode, 1);
     let lowestScale = 1;
     for (let i = 1; i <= 600; i++) {
       const time = i / 60;
-      const next = motionTarget('idle', time, time, 0, 1, time * Math.PI * 4, i % 16, mode);
+      const age = time % 0.5;
+      const next = motionTarget('idle', time, time, 0, 1, time * Math.PI * 4, i % 16, mode, beatPulse(age) + beatPulse(age - 0.5));
       assert.equal(next.frame, 24);
       assert.equal(next.x, 0); assert.equal(next.y, 0); assert.equal(next.angle, 0);
-      assert.ok(Math.abs(next.sy - previous.sy) < 0.09);
+      assert.ok(Math.abs(next.sy - previous.sy) < 0.18);
       assert.ok(next.sx > 0 && next.sy > 0 && Math.abs(next.yaw) < 0.3);
       lowestScale = Math.min(lowestScale, next.sy);
       previous = next;
@@ -90,8 +92,8 @@ test('music deforms one seated pose with a fixed base and volume-dependent compr
     assert.equal(quiet.frame, 24); assert.equal(quiet.y, 0);
     assert.equal(quiet.sx, 1); assert.equal(quiet.sy, 1); assert.equal(quiet.yaw, 0);
     assert.equal(motionTarget('dizzy', 0, 0, 0, 1, 1, undefined, mode).frame, 2);
-    const quietBeat = motionTarget('idle', 0, 0, 0, 0.15, 0, undefined, mode);
-    const loudBeat = motionTarget('idle', 0, 0, 0, 0.9, 0, undefined, mode);
+    const quietBeat = motionTarget('idle', 0, 0, 0, 0.15, 0, undefined, mode, 1);
+    const loudBeat = motionTarget('idle', 0, 0, 0, 0.9, 0, undefined, mode, 1);
     assert.ok(loudBeat.sy < quietBeat.sy - 0.3 && loudBeat.sx > quietBeat.sx);
   }
 });
@@ -99,10 +101,13 @@ test('music deforms one seated pose with a fixed base and volume-dependent compr
 test('audio and deformation react to a volume attack within two display frames', () => {
   const signal = new MusicSignal();
   signal.update(0, 0, 1);
-  const value = signal.update(0.12, 0.8, 1 + 1 / 60);
-  assert.ok(value.energy > 0.5);
   const smoother = new MotionSmoother();
-  const next = smoother.update(motionTarget('idle', 0, 0, 0, value.energy, 0, undefined, 'song'), 1 / 60, true);
+  let next;
+  for (let frame = 1; frame <= 2; frame++) {
+    const value = signal.update(0.12, 0.8, 1 + frame / 60);
+    next = smoother.update(motionTarget('idle', 0, 0, 0, value.energy, value.phase, undefined, 'song', value.pulse), 1 / 60, true);
+  }
+  assert.ok(next);
   assert.ok(next.sy < 0.81);
   assert.equal(next.y, 0);
 });

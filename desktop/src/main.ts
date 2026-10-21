@@ -16,7 +16,7 @@ let chasePosition: { x: number; y: number } | undefined;
 let musicWindow: BrowserWindow | undefined;
 let musicActive = false;
 let musicMode: MusicMode = 'system';
-let lastMusicSample: MusicSample = { active: false, energy: 0, phase: 0 };
+let lastMusicSample: MusicSample = { active: false, energy: 0, phase: 0, pulse: 0 };
 let captureAllowedUntil = 0;
 let dragging = false;
 let opaque = false;
@@ -62,7 +62,7 @@ function stopChasing(): void {
 function stopMusic(): void {
   const control = musicWindow; musicWindow = undefined;
   musicActive = false; captureAllowedUntil = 0;
-  lastMusicSample = { active: false, energy: 0, phase: 0 };
+  lastMusicSample = { active: false, energy: 0, phase: 0, pulse: 0 };
   control?.destroy();
   send({ type: 'stopSong' });
   send({ type: 'music', sample: lastMusicSample, mode: musicMode });
@@ -70,15 +70,12 @@ function stopMusic(): void {
 
 async function toggleSong(): Promise<void> {
   if (musicActive && musicMode === 'song') { stopMusic(); return; }
-  const selection = await dialog.showOpenDialog({ title: '⚡️‌HIHOの酒⚡️‌ · 选择本地音频',
-    properties: ['openFile'], filters: [{ name: '音频', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac'] }] });
-  if (selection.canceled || !selection.filePaths.length) return;
   try {
-    const audio = await readFile(selection.filePaths[0]);
+    const audio = await readFile(join(directory, 'assets', 'hiho-song.mp3'));
     stopMusic(); musicMode = 'song'; musicActive = true;
     send({ type: 'song', audio: new Uint8Array(audio) });
   } catch {
-    dialog.showErrorBox('音频无法打开', '请选择仍在本机磁盘上、可读取的音频文件。');
+    dialog.showErrorBox('歌曲资源不完整', '请重新解压完整的 Hiho 应用后再打开。');
   }
 }
 
@@ -268,10 +265,10 @@ else {
   });
   ipcMain.on('hiho:music', (event, value: MusicSample) => {
     if (event.sender !== musicWindow?.webContents || !value || typeof value.active !== 'boolean' ||
-        !Number.isFinite(value.energy) || !Number.isFinite(value.phase)) return;
+        !Number.isFinite(value.energy) || !Number.isFinite(value.phase) || !Number.isFinite(value.pulse)) return;
     const began = value.active && !musicActive;
     musicActive = value.active;
-    lastMusicSample = { active: musicActive, energy: Math.max(0, Math.min(1, value.energy)), phase: value.phase };
+    lastMusicSample = { active: musicActive, energy: Math.max(0, Math.min(1, value.energy)), phase: value.phase, pulse: Math.max(-0.3, Math.min(1, value.pulse)) };
     send({ type: 'music', sample: lastMusicSample, mode: musicMode });
     if (began) musicWindow?.hide();
   });

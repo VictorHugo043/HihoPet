@@ -68,3 +68,9 @@ test('greetings and emotional recordings are present and distinct', async () => 
   }
   assert.equal(new Set(hashes).size, voiceCatalog.length);
 });
+
+test('the direct-play music asset contains the bundled MP3', async () => {
+  const audio = await readFile(new URL('../src/assets/hiho-song.mp3', import.meta.url));
+  assert.ok(audio.length > 100000);
+  assert.ok(audio.subarray(0, 3).toString() === 'ID3' || audio[0] === 0xff);
+});

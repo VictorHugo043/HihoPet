@@ -21,9 +21,11 @@ Hiho 是 Jack Frost（杰克霜精）的非官方同人桌宠，与 ATLUS、SEGA
 
 社区来源不构成版权许可证明。本项目不主张拥有原始录音或角色声音的权利，也不将其纳入 MIT 许可。公开分发与其他用途需取得相应权利人的必要许可。
 
-## 音乐参考
+## 音乐与动作参考
 
-“⚡️‌HIHOの酒⚡️‌”的指定参考音源为活跃黑江乐的[《朋友的酒》DJ 完整版，B 站出处 BV1hXbN6VEKV](https://www.bilibili.com/video/BV1hXbN6VEKV/)。形变风格参考[Q 弹程序演示](https://www.bilibili.com/video/BV1Hupg64Eh7/)及[坐姿律动视频](https://www.bilibili.com/video/BV1VGYR6bECg/)。本地歌曲由用户自行选择，仓库和应用包不包含这些歌曲、歌词或视频，权益归各自权利人所有。
+`assets/hiho-song.mp3` 用于“⚡️‌HIHOの酒⚡️‌”，来源为活跃黑江乐的[《朋友的酒》DJ 完整版，B 站出处 BV1hXbN6VEKV](https://www.bilibili.com/video/BV1hXbN6VEKV/)。该录音不属于应用代码的 MIT 授权范围，歌曲、录音及相关作品权益归各自权利人所有。出处标注不构成版权许可；公开分发和其他用途需取得必要许可。
+
+形变风格参考[Q 弹程序演示](https://www.bilibili.com/video/BV1Hupg64Eh7/)及[坐姿律动视频](https://www.bilibili.com/video/BV1VGYR6bECg/)。
 
 ## 运行时
 

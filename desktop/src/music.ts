@@ -14,7 +14,7 @@ function stop(): void {
   stream?.getTracks().forEach(track => track.stop());
   stream = undefined;
   void context?.close(); context = undefined;
-  window.hiho.music({ active: false, energy: 0, phase: 0 });
+  window.hiho.music({ active: false, energy: 0, phase: 0, pulse: 0 });
 }
 button.addEventListener('click', async () => {
   button.disabled = true;
@@ -40,7 +40,7 @@ button.addEventListener('click', async () => {
       window.hiho.music({ active: true, ...value });
     }, 1000 / 60);
     capture.getAudioTracks()[0].addEventListener('ended', () => { stop(); button.disabled = false; status.textContent = '聆听已结束，随时可以再来一首。'; });
-    window.hiho.music({ active: true, energy: 0, phase: 0 });
+    window.hiho.music({ active: true, energy: 0, phase: 0, pulse: 0 });
     status.textContent = '正在聆听系统音乐。右键 Hiho 可停止。';
   } catch {
     stop(); button.disabled = false;
