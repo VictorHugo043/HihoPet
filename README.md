@@ -8,7 +8,7 @@
 
 | 平台 | 状态 | 下载 |
 | --- | --- | --- |
-| Codex Pets | 1.0.0 | [完整资源包](https://github.com/VictorHugo043/HihoPet/raw/refs/heads/main/packages/HIHO-Codex-1.0.0.zip) · [透明图集](Codex/spritesheet.png) |
+| Codex Pets | 1.0.1 | [完整资源包](https://github.com/VictorHugo043/HihoPet/raw/refs/heads/main/packages/HIHO-Codex-1.0.1.zip) · [透明图集](Codex/spritesheet.png) |
 | macOS 独立桌宠 | 待制作 | — |
 | Windows 独立桌宠 | 待制作 | — |
 
