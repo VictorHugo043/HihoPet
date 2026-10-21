@@ -1,7 +1,7 @@
 import { Artwork } from './artwork.js';
 import { LocalSong } from './local-song.js';
 import { OrbitTracker, PetBehavior, PettingTracker, type Mood } from './shared/behavior.js';
-import { MotionSmoother, motionTarget } from './shared/motion.js';
+import { MotionSmoother, motionTarget, lookDirection } from './shared/motion.js';
 import { VoicePlayer } from './shared/voice.js';
 import { voiceCatalog, greetingCount, dizzyVoice, angryVoice } from './shared/voice-catalog.js';
 import type { PointerSample, Settings, MusicSample, MusicMode } from './bridge.js';
@@ -207,7 +207,8 @@ function animate(milliseconds: number): void {
     const desired = Math.atan2(gazeX, gazeY);
     const delta = Math.atan2(Math.sin(desired - gazeAngle), Math.cos(desired - gazeAngle));
     gazeAngle += delta * (1 - Math.exp(-dt * 14));
-    look = (Math.round(gazeAngle / (2 * Math.PI) * 16) + 16) % 16;
+    gazeAngle = Math.atan2(Math.sin(gazeAngle), Math.cos(gazeAngle));
+    look = lookDirection(gazeAngle);
   }
   const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, listening ? (localSample.active ? 'song' : musicMode) : undefined, sample.pulse);
   if (behavior.mood === 'held' && behavior.shakeLevel >= 1) target.frame = 2;

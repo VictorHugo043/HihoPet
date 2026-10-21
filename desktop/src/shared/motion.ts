@@ -8,6 +8,10 @@ export interface MotionPose {
   liftLeft: number; liftRight: number;
 }
 
+export function lookDirection(angle: number): number {
+  return ((Math.round(angle / (2 * Math.PI) * 16) % 16) + 16) % 16;
+}
+
 export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelocity = 0, musicEnergy = 0, musicPhase = 0, look?: number, musicMode?: MusicMode, musicPulse = 0): MotionPose {
   const p: MotionPose = { x: 0, y: Math.sin(time * 1.8) * 0.35, angle: Math.sin(time * 1.1) * 0.004,
     sx: 1 + Math.sin(time * 1.8) * 0.005, sy: 1 - Math.sin(time * 1.8) * 0.004,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { motionTarget, MotionSmoother } from '../src/shared/motion.js';
+import { motionTarget, MotionSmoother, lookDirection } from '../src/shared/motion.js';
 import { MusicSignal } from '../src/shared/music-signal.js';
 import { beatPulse } from '../src/shared/music-track.js';
 import { PetBehavior, PettingTracker } from '../src/shared/behavior.js';
@@ -45,6 +45,18 @@ test('music preserves directional gaze and cannot replace emotional expressions'
   }
   assert.equal(motionTarget('dizzy', 0, 0, 0, 0.6, 1, 4).frame, 2);
   assert.equal(motionTarget('angry', 0, 0, 0, 0.6, 1, 4).frame, 3);
+});
+
+test('leaving a seated song keeps repeated mouse rotations inside directional gaze artwork', () => {
+  for (let i = -3200; i <= 3200; i++) {
+    const angle = (i + 0.13) * Math.PI / 32;
+    const look = lookDirection(angle);
+    assert.ok(look >= 0 && look < 16);
+    assert.equal(motionTarget('idle', 0, 0, 0, 0.6, 1, look, 'song', 1).frame, 24);
+    const standing = motionTarget('idle', 0, 0, 0, 0, 0, look);
+    assert.ok(standing.frame >= 8 && standing.frame < 24);
+    assert.equal(look, lookDirection(Math.atan2(Math.sin(angle), Math.cos(angle))));
+  }
 });
 
 test('recovered shake returns to gaze without replaying emotional poses', () => {
