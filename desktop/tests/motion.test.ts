@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { motionTarget, MotionSmoother, lookDirection } from '../src/shared/motion.js';
 import { MusicSignal } from '../src/shared/music-signal.js';
 import { beatPulse } from '../src/shared/music-track.js';
-import { PetBehavior, PettingTracker } from '../src/shared/behavior.js';
+import { PetBehavior, PettingTracker, OrbitTracker } from '../src/shared/behavior.js';
 
 test('dance and dizziness keep a stable expression and small continuous motion', () => {
   for (const mood of ['dance', 'dizzy'] as const) {
@@ -148,4 +148,20 @@ test('slow caresses accumulate even when each sample moves less than two pixels'
   let triggered = false;
   for (let i = 0; i < 180; i++) if (petting.observe(18 * Math.sin(i / 60 * 2 * Math.PI / 1.5), 0, i / 60, true)) triggered = true;
   assert.equal(triggered, true);
+});
+
+test('menu and music transitions discard unfinished petting and orbit gestures', () => {
+  const petting = new PettingTracker(), orbit = new OrbitTracker();
+  for (let i = 0; i < 90; i++) {
+    const time = i / 60, angle = i / 80 * Math.PI * 2;
+    assert.equal(orbit.observe(Math.sin(angle) * 80, Math.cos(angle) * 80, time), false);
+  }
+  const strokes = [...Array.from({ length: 17 }, (_, i) => i * 3), ...Array.from({ length: 16 }, (_, i) => 45 - i * 3)];
+  strokes.forEach((x, i) => assert.equal(petting.observe(x, 0, i / 60, true), false));
+  orbit.reset(); petting.reset();
+  for (let i = 0; i <= 80; i++) {
+    const time = 1.5 + i / 60, angle = (89 + i) / 80 * Math.PI * 2;
+    assert.equal(orbit.observe(Math.sin(angle) * 80, Math.cos(angle) * 80, time), false);
+  }
+  for (let i = 0; i < 16; i++) assert.equal(petting.observe(i * 3, 0, 0.56 + i / 60, true), false);
 });

@@ -160,8 +160,13 @@ export class PettingTracker {
   private cooldown = 0;
   private strokeAnchor = 0;
 
+  reset(): void {
+    this.previous = undefined;
+    this.travel = this.turns = this.direction = 0;
+  }
+
   observe(x: number, y: number, time: number, overHead: boolean): boolean {
-    if (!overHead || time < this.cooldown) { this.previous = undefined; this.travel = this.turns = 0; return false; }
+    if (!overHead || time < this.cooldown) { this.reset(); return false; }
     if (!this.previous || time - this.previous.time > 0.35 || time - this.startedAt > 2.5) {
       this.previous = { x, y, time }; this.startedAt = time; this.travel = this.turns = this.direction = 0;
       this.strokeAnchor = x;

@@ -15,6 +15,7 @@ let chasingUntil = 0;
 let chasePosition: { x: number; y: number } | undefined;
 let musicWindow: BrowserWindow | undefined;
 let musicActive = false;
+let menuOpen = false;
 let musicMode: MusicMode = 'system';
 let lastMusicSample: MusicSample = { active: false, energy: 0, phase: 0, pulse: 0 };
 let captureAllowedUntil = 0;
@@ -131,7 +132,10 @@ function menu(): Menu {
     { type: 'separator' },
     { label: '退出 Hiho', click: () => app.quit() }
   ];
-  return Menu.buildFromTemplate(items);
+  const result = Menu.buildFromTemplate(items);
+  result.on('menu-will-show', () => { menuOpen = true; });
+  result.on('menu-will-close', () => { menuOpen = false; });
+  return result;
 }
 
 function startPointerPolling(): void {
@@ -141,7 +145,8 @@ function startPointerPolling(): void {
     const point = screen.getCursorScreenPoint();
     const time = performance.now() / 1000;
     const dt = Math.max(1 / 240, time - previousSample.time);
-    const moved = point.x !== lastPointer.x || point.y !== lastPointer.y;
+    const cursorMoved = point.x !== lastPointer.x || point.y !== lastPointer.y;
+    const moved = cursorMoved && !menuOpen && !musicWindow?.isVisible();
     if (chasingUntil && time >= chasingUntil) stopChasing();
     if (dragging) {
       window.setPosition(Math.round(dragOrigin.x + point.x - dragPointer.x), Math.round(dragOrigin.y + point.y - dragPointer.y));
@@ -161,7 +166,7 @@ function startPointerPolling(): void {
       }
     }
     // Motion is sampled globally even when the transparent window passes mouse clicks through.
-    if (moved || dragging || chasingUntil) {
+    if (cursorMoved || dragging || chasingUntil) {
       const bounds = window.getBounds();
       const sample: PointerSample = { ...point, localX: point.x - bounds.x, localY: point.y - bounds.y,
         vx: (point.x - previousSample.x) / dt, vy: (point.y - previousSample.y) / dt, moved };

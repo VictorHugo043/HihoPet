@@ -14,7 +14,7 @@ const behavior = new PetBehavior();
 const orbit = new OrbitTracker();
 const petting = new PettingTracker();
 const motion = new MotionSmoother();
-const localSong = new LocalSong(active => window.hiho.songState(active));
+const localSong = new LocalSong(active => { resetGestures(); window.hiho.songState(active); });
 const voices: HTMLAudioElement[] = [];
 let voicePlayer: VoicePlayer;
 let settings: Settings = { muted: false, scale: 1.5 };
@@ -36,6 +36,8 @@ const descriptions: Record<Mood, string> = {
   pout: '正在消气', dance: '正在跳舞', sleeping: '正在睡觉', curious: '好奇地看看',
   petted: '被摸头，舒服地眯眼', feeding: '正在吃雪球', chasing: '正在追着鼠标玩'
 };
+
+function resetGestures(): void { orbit.reset(); petting.reset(); }
 
 function say(text: string, duration: number): void {
   bubble.textContent = text;
@@ -90,7 +92,7 @@ canvas.addEventListener('click', event => {
   if (event.detail === 2) behavior.jump(performance.now() / 1000);
   else greet();
 });
-canvas.addEventListener('contextmenu', event => { event.preventDefault(); behavior.interact(performance.now() / 1000); window.hiho.contextMenu(); });
+canvas.addEventListener('contextmenu', event => { event.preventDefault(); resetGestures(); behavior.interact(performance.now() / 1000); window.hiho.contextMenu(); });
 canvas.addEventListener('keydown', event => {
   if (event.key === 'Enter') { event.preventDefault(); greet(); }
   else if (event.key === ' ') { event.preventDefault(); behavior.jump(performance.now() / 1000); }
@@ -98,7 +100,7 @@ canvas.addEventListener('keydown', event => {
 
 window.hiho.onPointer(sample => {
   pointer = sample;
-  if (!sample.moved) return;
+  if (!sample.moved) { resetGestures(); return; }
   const time = performance.now() / 1000;
   pointerMovedAt = time;
   const dx = (sample.localX - window.innerWidth / 2) / settings.scale;
@@ -128,6 +130,7 @@ window.hiho.onAction(action => {
     void localSong.play(action.audio).catch(() => say('这个音频暂时播不了，ho…', 2));
   } else if (action.type === 'stopSong') localSong.stop();
   else if (action.type === 'music') {
+    if (action.sample.active !== music.active) resetGestures();
     if (action.sample.active && !music.active && behavior.mood === 'sleeping') behavior.toggleSleep(time);
     music = action.sample; musicMode = action.mode; musicReceivedAt = time;
   } else if (action.type === 'settings') {
