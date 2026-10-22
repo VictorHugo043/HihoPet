@@ -1,7 +1,7 @@
 {
   "name": "hiho-pet",
   "productName": "Hiho",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Hiho animated desktop companion",
   "type": "module",

@@ -64,7 +64,9 @@ export function motionTarget(mood: Mood, elapsed: number, time: number, heldVelo
   } else if (mood === 'landing') {
     const recoil = Math.exp(-t * 8) * Math.cos(t * 18); p.sx = 1 + recoil * 0.11; p.sy = 1 - recoil * 0.11;
   } else if (mood === 'sleeping') {
-    p.frame = 6; p.sy = 1 + Math.sin(time * 1.4) * 0.009;
+    const breath = (1 - Math.cos(t * 2 * Math.PI / 4.2)) / 2;
+    p.frame = 6; p.x = 0; p.y = breath * 0.6; p.angle = 0;
+    p.sx = 1 + breath * 0.012; p.sy = 1 + breath * 0.04;
   } else if (mood === 'waking') {
     p.frame = 4; p.armLeft = Math.sin(Math.min(1, t / 0.75) * Math.PI) * 0.35; p.armRight = -p.armLeft;
   } else if (mood === 'petted') {
