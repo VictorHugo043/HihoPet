@@ -104,3 +104,23 @@ test('a stopped drum phrase cannot leave an indefinitely predicted rhythm', () =
     bass: 0.002 + attacks(time, beats) * 0.12 }));
   assert.equal(peaks(frames.filter(frame => frame.time > 3.7), 0.1).length, 0);
 });
+
+test('loopback latency compensation keeps body compression on the audible beat', () => {
+  const captureLatency = 0.07;
+  for (const bpm of [90, 129, 180]) {
+    const beats = Array.from({ length: 18 }, (_, i) => 0.5 + i * 60 / bpm);
+    const signal = new MusicSignal(captureLatency), smoother = new MotionSmoother(), frames = [];
+    for (let time = 0; time < beats.at(-1)! + 1; time += 1 / 60) {
+      const drum = attacks(time - captureLatency - 0.02, beats);
+      const value = signal.update(0.035 + drum * 0.18, 0.005 + drum * 0.12, time);
+      const pose = smoother.update(motionTarget('idle', time, time, 0, value.energy, value.phase, undefined, 'system', value.pulse), 1 / 60, true);
+      frames.push({ time, sy: pose.sy, pulse: value.pulse });
+    }
+    for (const beat of beats.slice(5)) {
+      const region = frames.filter(frame => Math.abs(frame.time - beat) < 0.12);
+      const peak = region.reduce((a, b) => a.sy < b.sy ? a : b);
+      assert.ok(Math.abs(peak.time - beat) < 0.035, `${bpm} BPM: audible beat ${beat}, compression ${peak.time}`);
+    }
+    assert.equal(peaks(frames.filter(frame => frame.time > beats.at(-1)! + 0.8), 0.1).length, 0);
+  }
+});

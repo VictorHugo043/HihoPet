@@ -27,7 +27,7 @@ let poll: ReturnType<typeof setInterval> | undefined;
 let preferencesPath: string;
 let lastPointer = { x: NaN, y: NaN };
 let previousSample = { x: 0, y: 0, time: 0 };
-const scales = [1.1, 1.5, 1.9];
+const scales = [0.75, 1.1, 1.5, 1.9];
 
 function size(scale: number): { width: number; height: number } {
   return { width: Math.round(192 * scale + 90), height: Math.round(208 * scale + 85) };
@@ -49,7 +49,9 @@ function keepOnScreen(): void {
   lastPointer = { x: NaN, y: NaN };
 }
 
-function send(action: MenuAction): void { window?.webContents.send('hiho:action', action); }
+function send(action: MenuAction): void {
+  if (window && !window.isDestroyed()) window.webContents.send('hiho:action', action);
+}
 
 function updateHit(): void { window?.setIgnoreMouseEvents(!opaque && !dragging, { forward: true }); }
 
@@ -126,7 +128,7 @@ function menu(): Menu {
       save();
       send({ type: 'settings', settings });
     } },
-    { label: '大小', submenu: ['小小只', '刚刚好', '大一点'].map((label, index) => ({
+    { label: '大小', submenu: ['迷你', '小小只', '刚刚好', '大一点'].map((label, index) => ({
       label, type: 'radio' as const, checked: settings.scale === scales[index], click: () => setScale(scales[index])
     })) },
     { type: 'separator' },

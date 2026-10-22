@@ -39,6 +39,10 @@ const descriptions: Record<Mood, string> = {
 
 function resetGestures(): void { orbit.reset(); petting.reset(); }
 
+function activeMusicMode(time: number): MusicMode | undefined {
+  return localSong.active ? 'song' : music.active && time - musicReceivedAt < 0.5 ? musicMode : undefined;
+}
+
 function say(text: string, duration: number): void {
   bubble.textContent = text;
   speechBeganAt = performance.now() / 1000;
@@ -58,7 +62,8 @@ function greet(): void {
 function finishDrag(): void {
   if (!down) return;
   if (behavior.dragging) {
-    behavior.endDrag(performance.now() / 1000);
+    const time = performance.now() / 1000;
+    behavior.endDrag(time, activeMusicMode(time));
     suppressClickUntil = performance.now() + 250;
   }
   window.hiho.endDrag();
@@ -77,7 +82,7 @@ canvas.addEventListener('pointermove', event => {
   if (!down || event.pointerId !== down.pointerId) return;
   const time = performance.now() / 1000;
   if (!behavior.dragging && Math.hypot(event.screenX - down.x, event.screenY - down.y) > 5) {
-    behavior.beginDrag(time, down.x, down.y);
+    behavior.beginDrag(time, down.x, down.y, activeMusicMode(time));
     orbit.reset(); stopVoice(); speechUntil = 0; chasingUntil = 0;
     canvas.classList.add('held');
     window.hiho.startDrag();
@@ -181,7 +186,8 @@ function animate(milliseconds: number): void {
   behavior.update(time);
   const localSample = localSong.sample(time);
   const sample = localSample.active ? localSample : music;
-  const listening = localSample.active || (music.active && time - musicReceivedAt < 0.5);
+  const playingMode = activeMusicMode(time);
+  const listening = playingMode !== undefined;
   behavior.autoSleep(time, listening);
   if (behavior.mood === 'idle' && time < chasingUntil) behavior.start('chasing', time, chasingUntil - time);
   if (behavior.mood === 'idle' && time > nextCuriosity && time - pointerMovedAt > 2.3 && !listening) {
@@ -213,7 +219,7 @@ function animate(milliseconds: number): void {
     gazeAngle = Math.atan2(Math.sin(gazeAngle), Math.cos(gazeAngle));
     look = lookDirection(gazeAngle);
   }
-  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, listening ? (localSample.active ? 'song' : musicMode) : undefined, sample.pulse);
+  const target = motionTarget(behavior.mood, t, time, pointer?.vx ?? 0, energy, sample.phase, look, playingMode, sample.pulse);
   if (behavior.mood === 'held' && behavior.shakeLevel >= 1) target.frame = 2;
   const press = time - pressedAt;
   if (press >= 0 && press < 0.18 && !behavior.dragging) { const squeeze = Math.sin(press / 0.18 * Math.PI) * 0.04; target.sx += squeeze; target.sy -= squeeze; }

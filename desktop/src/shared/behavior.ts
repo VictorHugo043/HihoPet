@@ -1,3 +1,5 @@
+import type { MusicMode } from '../bridge.js';
+
 export type Mood = 'idle' | 'greeting' | 'delighted' | 'jump' | 'held' | 'landing' | 'dizzy' | 'waking' | 'angry' | 'pout' | 'dance' | 'sleeping' | 'curious' | 'petted' | 'feeding' | 'chasing';
 
 /** Monotonic seconds keep gesture recognition independent of display refresh rate. */
@@ -16,6 +18,7 @@ export class PetBehavior {
   private dragDirection = { x: 0, y: 0 };
   private strokeAt = 0;
   private lastInteraction = 0;
+  private dragMusicMode: MusicMode | undefined;
 
   interact(time: number): void { this.lastInteraction = time; }
 
@@ -49,7 +52,7 @@ export class PetBehavior {
     this.start('jump', time, 0.9);
   }
 
-  beginDrag(time: number, x = 0, y = 0): void {
+  beginDrag(time: number, x = 0, y = 0, musicMode?: MusicMode): void {
     this.interact(time);
     this.dragging = true;
     this.shaken = false;
@@ -59,11 +62,12 @@ export class PetBehavior {
     this.dragAnchor = this.dragPeak = { x, y };
     this.dragDirection = { x: 0, y: 0 };
     this.strokeAt = time;
-    this.start('held', time);
+    this.dragMusicMode = musicMode;
+    this.start(musicMode === 'song' ? 'idle' : 'held', time);
   }
 
   drag(x: number, y: number, time: number): void {
-    if (!this.dragging) return;
+    if (!this.dragging || this.dragMusicMode === 'song') return;
     this.reversals = this.reversals.filter(t => time - t <= 3);
     const dx = x - this.dragAnchor.x, dy = y - this.dragAnchor.y;
     const length = Math.hypot(dx, dy);
@@ -90,12 +94,16 @@ export class PetBehavior {
     if (this.reversals.length >= 4) this.shaken = true;
   }
 
-  endDrag(time: number): void {
+  endDrag(time: number, musicMode?: MusicMode): void {
     if (!this.dragging) return;
     this.dragging = false;
+    this.dragMusicMode = undefined;
     this.interact(time);
-    if (this.shaken) this.becomeDizzy(time);
-    else this.start('landing', time, 0.55);
+    if (this.shaken && musicMode !== 'song') this.becomeDizzy(time);
+    else {
+      this.shaken = false; this.shakeLevel = 0; this.reversals = [];
+      this.start(musicMode ? 'idle' : 'landing', time, musicMode ? Infinity : 0.55);
+    }
   }
 
   becomeDizzy(time: number): void {

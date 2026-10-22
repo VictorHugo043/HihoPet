@@ -110,7 +110,11 @@ export class Artwork {
   }
 
   draw(context: CanvasRenderingContext2D, pose: MotionPose, time: number): void {
-    if (pose.frame !== this.frame) { this.previousFrame = this.frame; this.frame = pose.frame; this.changedAt = time; }
+    if (pose.frame !== this.frame) {
+      // Putting down a listening pet restores its seat without a standing afterimage.
+      this.previousFrame = this.frame === 5 && pose.frame === 24 ? pose.frame : this.frame;
+      this.frame = pose.frame; this.changedAt = time;
+    }
     const gl = this.gl;
     if (this.canvas.width !== context.canvas.width || this.canvas.height !== context.canvas.height) {
       this.canvas.width = context.canvas.width; this.canvas.height = context.canvas.height;

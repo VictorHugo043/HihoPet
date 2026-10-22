@@ -21,12 +21,15 @@ button.addEventListener('click', async () => {
   const run = ++generation;
   try {
     await window.hiho.authorizeMusic();
-    const capture = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    const capture = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+    });
     capture.getVideoTracks().forEach(track => { track.stop(); capture.removeTrack(track); });
     if (run !== generation) { capture.getTracks().forEach(track => track.stop()); return; }
     if (!capture.getAudioTracks().length) { capture.getTracks().forEach(track => track.stop()); throw new Error('No system audio'); }
     stream = capture;
-    context = new AudioContext(); await context.resume();
+    context = new AudioContext({ latencyHint: 'interactive' }); await context.resume();
     const source = context.createMediaStreamSource(capture);
     const analyser = context.createAnalyser(); analyser.fftSize = 1024;
     source.connect(analyser);
@@ -35,7 +38,9 @@ button.addEventListener('click', async () => {
     const bassAnalyser = context.createAnalyser(); bassAnalyser.fftSize = 1024;
     source.connect(highpass).connect(lowpass).connect(bassAnalyser);
     const wave = new Float32Array(analyser.fftSize), bassWave = new Float32Array(bassAnalyser.fftSize);
-    const signal = new MusicSignal();
+    // The macOS loopback buffer precedes analysis by about 70 ms. Predict in
+    // audible time so the seated compression reaches the beat, not its capture.
+    const signal = new MusicSignal(0.07);
     timer = setInterval(() => {
       analyser.getFloatTimeDomainData(wave); bassAnalyser.getFloatTimeDomainData(bassWave);
       let square = 0; for (const sample of wave) square += sample * sample;

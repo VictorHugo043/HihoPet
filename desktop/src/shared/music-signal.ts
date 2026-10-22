@@ -22,6 +22,8 @@ export class MusicSignal {
   private predictedBeat = -Infinity;
   private beatEnergy = 0;
 
+  constructor(private readonly captureLatency = 0) {}
+
   update(rms: number, bass: number, time: number): MusicFrame {
     const dt = this.previousTime === undefined ? 1 / 60 : Math.max(1 / 240, Math.min(0.2, time - this.previousTime));
     this.previousTime = time;
@@ -50,7 +52,7 @@ export class MusicSignal {
           } else this.intervals = [];
           // Band filtering, the RMS window and envelope smoothing put the detected
           // peak about 35 ms behind the attack. Keep the visual beat on that attack.
-          const onset = previous.time - 0.035;
+          const onset = previous.time - 0.035 - this.captureLatency;
           const predicted = Math.abs(onset - this.predictedBeat) < this.period * 0.2;
           beat = predicted ? this.predictedBeat + Math.max(-0.01, Math.min(0.01, onset - this.predictedBeat)) : time;
           const recent = this.intervals.slice(-3).sort((a, b) => a - b);

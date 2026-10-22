@@ -1,6 +1,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PetBehavior, OrbitTracker, ShuffleBag } from '../src/shared/behavior.js';
+import { motionTarget } from '../src/shared/motion.js';
+
+test('bundled song dragging keeps the seated beat through movement and release', () => {
+  const pet = new PetBehavior();
+  pet.beginDrag(0, 0, 0, 'song');
+  for (let i = 0; i < 24; i++) {
+    const time = i / 60;
+    pet.drag(i % 2 ? -80 : 80, 0, time);
+    pet.update(time);
+    assert.equal(pet.dragging, true);
+    assert.equal(pet.shakeLevel, 0);
+    assert.equal(motionTarget(pet.mood, time, time, 1000, 0.8, time * 12, undefined, 'song', 1).frame, 24);
+  }
+  pet.endDrag(0.4, 'song');
+  assert.equal(pet.dragging, false);
+  assert.equal(pet.mood, 'idle');
+  pet.update(1);
+  assert.equal(pet.mood, 'idle');
+});
+
+test('system music holds the pet while dragging and seats it immediately on an ordinary release', () => {
+  const pet = new PetBehavior();
+  pet.beginDrag(0, 0, 0, 'system');
+  for (let i = 0; i < 4; i++) pet.drag(i % 2 ? -40 : 40, 0, i * 0.1);
+  assert.equal(pet.mood, 'held');
+  assert.equal(motionTarget(pet.mood, 0.4, 0.4, 1000, 0.8, 1, undefined, 'system', 1).frame, 5);
+  pet.endDrag(0.4, 'system');
+  assert.equal(pet.mood, 'idle');
+  assert.equal(pet.shakeLevel, 0);
+  assert.equal(motionTarget(pet.mood, 0, 0.4, 0, 0.8, 1, undefined, 'system', 1).frame, 24);
+});
+
+test('system music retains shake dizziness and stopped music uses an ordinary landing', () => {
+  const pet = new PetBehavior();
+  pet.beginDrag(0, 0, 0, 'system');
+  for (let i = 0; i < 9; i++) pet.drag(i % 2 ? -60 : 60, 0, i * 0.1);
+  pet.endDrag(1, 'system');
+  assert.equal(pet.mood, 'dizzy');
+  for (const mode of ['song', 'system'] as const) {
+    pet.beginDrag(2, 0, 0, mode);
+    pet.drag(40, 0, 2.1);
+    pet.endDrag(2.2);
+    assert.equal(pet.mood, 'landing');
+  }
+});
 
 test('a fast one-way drag lands without becoming dizzy', () => {
   const pet = new PetBehavior();
