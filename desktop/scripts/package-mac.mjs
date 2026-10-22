@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
-if (process.platform !== 'darwin') throw new Error('Build the macOS preview on macOS.');
+if (process.platform !== 'darwin') throw new Error('Build the macOS package on macOS.');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const stage = await mkdtemp(join(tmpdir(), 'hiho-package-'));
 try {
@@ -29,10 +30,18 @@ try {
   const bundle = join(output, 'Hiho.app');
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'inherit' });
   execFileSync('codesign', ['--verify', '--deep', '--strict', bundle], { stdio: 'inherit' });
-  const zip = join(root, 'out', `Hiho-macOS-${process.arch}.zip`);
+  const name = `Hiho-${metadata.version}-macOS-${process.arch}`;
+  const distribution = join(stage, name);
+  execFileSync('ditto', [output, distribution]);
+  await cp(join(root, 'INSTALL-macOS.md'), join(distribution, 'INSTALL-macOS.md'));
+  await cp(join(root, 'THIRD_PARTY.md'), join(distribution, 'THIRD_PARTY.md'));
+  await cp(join(root, '..', 'LICENSE'), join(distribution, 'RIGHTS-NOTICE.txt'));
+  const zip = join(root, 'out', `${name}.zip`);
   await rm(zip, { force: true });
-  execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', bundle, zip]);
-  console.log(`App: ${bundle}\nPreview: ${zip}`);
+  execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', distribution, zip]);
+  const checksum = createHash('sha256').update(await readFile(zip)).digest('hex');
+  await writeFile(join(root, 'out', 'SHA256SUMS.txt'), `${checksum}  ${name}.zip\n`);
+  console.log(`App: ${bundle}\nPackage: ${zip}\nSHA-256: ${checksum}`);
 } finally {
   await rm(stage, { recursive: true, force: true });
 }

@@ -1,12 +1,12 @@
 # Hiho 桌面应用
 
-Electron + TypeScript 实现的透明桌宠。共享动画、手势识别和互动逻辑位于同一代码目录；macOS 提供开发预览，Windows 待验证和打包。
+Electron + TypeScript 实现的透明桌宠。共享动画、手势识别和互动逻辑位于同一代码目录；macOS 提供 Apple Silicon 安装包，Windows 待验证和打包。
 
 ## 打开 macOS 应用
 
-将预览包解压，双击 `Hiho.app`。也可以将它拖到“应用程序”文件夹后打开。菜单栏蓝色小图标提供与右键相同的控制菜单。
+从 [Releases](https://github.com/VictorHugo043/HihoPet/releases/tag/macos-0.3.4) 下载 macOS arm64 包，解压后将 `Hiho.app` 拖到“应用程序”，再双击打开。支持 M 系列芯片、macOS 13 或更新版本；无需安装开发工具。菜单栏蓝色小图标提供与右键相同的控制菜单。
 
-预览包使用本地临时签名，尚未通过 Apple 公证；其他 Mac 可能会阻止打开。
+应用使用 ad-hoc 本地签名，尚未通过 Apple 公证。首次打开被拦截、音频权限、文件校验、更新与卸载步骤见 [macOS 安装说明](INSTALL-macOS.md)，安装包内也附有这份说明。
 
 ## 互动
 
@@ -54,7 +54,7 @@ npm start
 npm run package:mac
 ```
 
-生成 `out/Hiho-darwin-arm64/Hiho.app` 与 `out/Hiho-macOS-arm64.zip`（Apple Silicon）；在 Intel Mac 上构建时架构为 `x64`。输出目录不进入 Git。
+生成 `out/Hiho-darwin-arm64/Hiho.app`、带版本号的 `out/Hiho-<版本>-macOS-arm64.zip` 与 `out/SHA256SUMS.txt`（Apple Silicon）。ZIP 内含安装说明、素材权利说明及 Electron 运行时许可。在 Intel Mac 上构建时架构为 `x64`；已发布的包以 Release 标注为准。输出目录不进入 Git。
 
 `src/shared/behavior.ts` 处理互动状态和手势；`src/shared/motion.ts` 驱动连续动作；`src/artwork.ts` 用一张连通的角色网格绘制身体，保留颈部像素。系统音乐仅传递节奏数值给桌宠窗口。
 

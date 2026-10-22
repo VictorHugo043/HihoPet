@@ -9,7 +9,7 @@
 | 平台 | 状态 | 下载 |
 | --- | --- | --- |
 | Codex Pets | 1.0.1 | [完整资源包](https://github.com/VictorHugo043/HihoPet/raw/refs/heads/main/packages/HIHO-Codex-1.0.1.zip) · [透明图集](Codex/spritesheet.png) |
-| macOS 独立桌宠 | 开发预览 | [运行与打包说明](desktop/README.md) |
+| macOS 独立桌宠 | 0.3.4 · Apple Silicon | [下载安装包](https://github.com/VictorHugo043/HihoPet/releases/download/macos-0.3.4/Hiho-0.3.4-macOS-arm64.zip) · [安装说明](desktop/INSTALL-macOS.md) |
 | Windows 独立桌宠 | 待制作 | — |
 
 ## Codex 桌宠
